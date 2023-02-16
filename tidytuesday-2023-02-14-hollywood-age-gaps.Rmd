@@ -1,0 +1,101 @@
+```{r}
+# Hollywood Age Gaps
+# https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-02-14/readme.md
+
+# Loading packages/パッケージの読み込み
+library(tidyr);library(dplyr);library(ggplot2);library(ggpubr);library(ggExtra);library(scales);library(gt)
+
+# Loading source data/ソースデータの読み込み
+age_gaps <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-14/age_gaps.csv') %>% data.frame(check.names = F)
+
+# Get an overview of the source data/ソースデータの概要確認
+glimpse(age_gaps)
+
+#################### scatter plot/散布図 ####################
+
+# Compare actor_1_age and actor_2_age/actor_1_ageとactor_2_ageを比較
+{age_gaps$actor_1_age>=age_gaps$actor_2_age} %>% all()
+
+# Extract rows from the data frame where male actors are older than female actors/男優のほうが年上の行を抽出 
+men_older_than_women <- 
+  {age_gaps$character_1_gender=='man' & age_gaps$character_2_gender=='woman' & age_gaps$actor_1_age > age_gaps$actor_2_age} %>% age_gaps[.,]
+head(men_older_than_women[,c("character_1_gender","character_2_gender","actor_1_age","actor_2_age")])
+tail(men_older_than_women[,c("character_1_gender","character_2_gender","actor_1_age","actor_2_age")])
+
+# Extract rows from the data frame where female actors are older than male actors/女優のほうが年上の行を抽出 
+women_older_than_men <- 
+  {age_gaps$character_2_gender=='man' & age_gaps$character_1_gender=='woman' & age_gaps$actor_1_age > age_gaps$actor_2_age} %>% age_gaps[.,]
+head(women_older_than_men[,c("character_1_gender","character_2_gender","actor_1_age","actor_2_age")])
+tail(women_older_than_men[,c("character_1_gender","character_2_gender","actor_1_age","actor_2_age")])
+
+# Get age range/年齢の範囲を取得
+age_range <- c(min(age_gaps$actor_1_age,age_gaps$actor_2_age),max(age_gaps$actor_1_age,age_gaps$actor_2_age))
+age_range
+
+# Functions for creating chart/図を作成するための関数
+fun_plot <- function(df,gradient_low,gradient_high,density_color,age_range,plot_title,xlab_title,ylab_title){
+  tmp <- df %>% 
+    ggplot(mapping = aes(x = actor_1_age,y = actor_2_age,col =age_difference)) + 
+    geom_point() + 
+    theme_minimal() + 
+    theme(aspect.ratio = 1,
+          plot.title = element_text(hjust = 1,size = 18),
+          axis.title = element_text(size = 14),
+          axis.text = element_text(size = 14),
+          legend.title = element_text(size = 14),
+          legend.text = element_text(size = 14)) + 
+    geom_abline(intercept = 0, slope = 1, linewidth = 0.5) + 
+    scale_color_gradient(low = gradient_low,high = gradient_high) + 
+    xlab(xlab_title) + 
+    ylab(ylab_title) + 
+    guides(col = guide_legend(title = "Age gap",override.aes = list(size = 5))) + 
+    labs(title = plot_title) +
+    scale_x_continuous(breaks = pretty_breaks(10),sec.axis = dup_axis(),limits = age_range) + 
+    scale_y_continuous(breaks = pretty_breaks(10),sec.axis = dup_axis(),limits = age_range)
+  ggMarginal(tmp,type = "density", fill = density_color) %>% return()
+}
+g1 <- fun_plot(df = men_older_than_women,gradient_low = 'palegreen',gradient_high = 'darkgreen',density_color = 'mediumseagreen',age_range = age_range,plot_title = 'Male actor is older',xlab_title = 'Age of male actors',ylab_title = 'Age of female actors');g1
+g2 <- fun_plot(df = women_older_than_men,gradient_low = 'palegreen',gradient_high = 'darkgreen',density_color = 'mediumseagreen',age_range = age_range,plot_title = 'Female actors is older',xlab_title = 'Age of female actors',ylab_title = 'Age of male actors');g2
+g <- ggarrange(g1, g2,ncol = 2, nrow = 1,labels = 'Hollywood Age Gaps-Movis of L\U1F496ve interest-',hjust = -0.4,font.label = list(size = 25))
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-02-14-hollywood-age-gaps.png"),width = 900,height = 500)
+g %>% print()
+dev.off()
+
+#################### table by gt ####################
+
+# Sort by age difference in descending order/年齢差降順に並べ替え
+age_gaps <- age_gaps$age_difference %>% order(decreasing = T) %>% age_gaps[.,]
+
+# Extract rows where character_1_gender is female and character_2_gender is male/キャラクター1が女性、キャラクター2が男性の行を抽出
+df0 <- {age_gaps$character_1_gender=='woman' & age_gaps$character_2_gender=='man'} %>% age_gaps[.,]
+
+# Extract rows where the age of the female actor is more than twice the age of the male actor/女性俳優の年齢が男性俳優の年齢の2倍以上の行を抽出
+df1 <- {(df0$actor_1_age/df0$actor_2_age)>=2} %>% df0[.,]
+
+# Extract columns to display/表示する列を抽出
+df <- df1[,c("movie_name","age_difference","actor_1_name","actor_2_name","actor_1_age","actor_2_age")]
+
+# Change column name/列名を変更
+colnames(df) <- c('Movie','Age gap','Actor1','Actor2',"Age1","Age2")
+
+# Create table/表を作成
+g <- 
+  gt(df) %>% 
+  tab_header(
+    title = md("**Hollywood Age Gaps**"),
+    subtitle = "Movis of L\U1F496ve interest in which woman are more than twice the age of man"
+  ) %>% 
+  tab_spanner(label = "Woman",columns = c(3,5)) %>% 
+  tab_spanner(label = "Man",columns = c(4,6)) %>%
+  cols_align(align = "center") %>%
+  cols_label(`Age gap`=md('Age<br>gap'),Actor1 = "Actor",Actor2 = "Actor",Age1 = "Age",Age2 = "Age") %>% 
+  tab_footnote(md("Source:<br>https://hollywoodagegap.com/<br>https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-02-14/readme.md")) %>% 
+  tab_footnote(footnote = "Name of the film.",location = cells_column_labels(columns = c(1))) %>% 
+  tab_footnote(footnote = "Age difference between the characters in whole years.",location = cells_column_labels(columns = c(2))) %>% 
+  tab_footnote(footnote = "The age of the actor when the film was released.",location = cells_column_labels(columns = c(5,6)))
+
+# Save as image/イメージとして保存
+setwd('D:/tidytuesday/');getwd()
+gt::gtsave(data = g,"tidytuesday-2023-02-14-hollywood-age-gaps-table.png")
+```
