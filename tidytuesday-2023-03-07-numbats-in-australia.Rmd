@@ -1,0 +1,130 @@
+```{r}
+# Numbats in Australia
+# https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-07/readme.md
+
+# Loading packages/パッケージの読み込み
+# library(tidylog)
+library(tidyverse)
+library(sf)
+library(ozmaps)
+library(gridExtra)
+library(ggpubr)
+library(ggExtra)
+library(scales)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data/ソースデータの読み込み
+numbats <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-07/numbats.csv')
+
+# Glimpse
+glimpse(numbats)
+
+# Read shape file/シェイプファイルの読み込み
+# https://medium.com/analytics-vidhya/mapping-australia-in-r-6ce092c48b49
+# https://www.abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/1270.0.55.001July%202016?OpenDocument
+# https://rpubs.com/techanswers88/Choropleth-map-of-Australia-using-ggplot
+sf_oz <- ozmap(x = "states")
+
+# Extract rows where location is not NA./緯度経度ともにNAでない行を抽出
+numbats_with_location <- {!is.na(numbats$decimalLatitude * numbats$decimalLongitude)} %>% numbats[.,]
+
+# Creating Charts/作図
+g <- list()
+titlefontsize <- 18
+axistextsize <- 15
+
+## Where do you find numbats in Australia?
+p <- 
+  ggplot() + 
+  geom_sf(data = sf_oz,fill = "white") + 
+  theme_minimal() + 
+  geom_point(data = numbats_with_location,
+             mapping = aes(x = decimalLongitude ,y = decimalLatitude),
+             col = '#5F8575') +
+  theme(axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5,size = titlefontsize),
+        axis.text = element_text(size = axistextsize)) + 
+  labs(title = 'Where do you find numbats in Australia?') +
+  scale_x_continuous(labels = function(x)paste0(abs(x),'°E')) + 
+  scale_y_continuous(labels = function(x)paste0(abs(x),'°S'))
+g[[1]] <- ggMarginal(p,type = "density", fill = '#5F8575')
+g[[1]]
+
+# Extract rows where the date is not NA./day がNAでない行を抽出
+numbats_with_day <- {!is.na(numbats$day)} %>% numbats[.,]
+
+## Are they more frequent in the summer or winter?
+numbats_with_day$month <- numbats_with_day$month %>% factor(levels = month.abb)
+
+winter <- numbats_with_day$month %>% grep(month.abb[1:3] %>% paste0(collapse = '|'),.) %>% length()
+spring <- numbats_with_day$month %>% grep(month.abb[4:6] %>% paste0(collapse = '|'),.) %>% length()
+summer <- numbats_with_day$month %>% grep(month.abb[7:9] %>% paste0(collapse = '|'),.) %>% length()
+autumn <- numbats_with_day$month %>% grep(month.abb[10:12] %>% paste0(collapse = '|'),.) %>% length()
+countsbyseason <- paste0('Total:',nrow(numbats_with_day),
+                         '\nWinter(Jan-Mar):',winter,
+                         '\nSpring(Apr-Jun):',spring,
+                         '\nSummer(Jul-Sep):',summer,
+                         '\nAutumn(Oct-Dec):',autumn)
+
+g[[2]] <- 
+  ggplot() + 
+  geom_histogram(mapping = aes(x = month),
+                 data = numbats_with_day,
+                 stat = 'count',
+                 fill = '#5F8575') + 
+  theme_minimal() + 
+  theme(axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5,size = titlefontsize),
+        axis.text = element_text(size = axistextsize)) + 
+  labs(title = 'Are they more frequent in the summer or winter?') +
+  annotate(geom = "text",
+           x = 1,
+           y = 200,
+           label = countsbyseason,
+           angle = 0,
+           hjust = 0,
+           vjust = 1,
+           size = 6,
+           col = 'black')
+g[[2]]
+
+## What time of day do numbat sightings occur?
+numbats_with_day$hour <- numbats_with_day$hour %>% factor(levels = numbats_with_day$hour %>% unique() %>% sort())
+countdata <- numbats_with_day$hour %>% count() %>% join(data.frame(x = 0:24),.) %>% {.[is.na(.)] <- 0;.}
+countdata$x <- countdata$x %>% factor(levels = 0:24)
+g[[3]] <- 
+  ggplot() + 
+  geom_bar(mapping = aes(x = x,y = freq),
+           data = countdata,
+           fill = '#5F8575',
+           stat = 'identity') + 
+  theme_minimal() + 
+  theme(axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5,size = titlefontsize),
+        axis.text = element_text(size = axistextsize)) + 
+  labs(title = 'What time of day do numbat sightings occur?')
+g[[3]]
+
+layout_matrix <- rbind(c(1,1),c(2,3))
+gg <- arrangeGrob(grobs = g,
+                  ncol = 2,
+                  nrow = 2,
+                  layout_matrix = layout_matrix,
+                  widths = c(1,1),
+                  heights = c(1,1),
+                  top = textGrob('Numbats in Australia\n',
+                                 gp=gpar(fontsize = 25))) %>% as_ggplot()
+gg
+
+# Chart output/チャートの出力
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-03-07-numbats-in-australia.png"),width = 1200,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+## Chart type : Scatter plot with map of Australia and two histograms.
+## Type of data : Location and date Numbats were found in Australia.
+## Reason for including the chart : To see where Numbats are found in Australia and their density on a scatterplot. And to see if there is a difference between summer and winter in the number of Numbats found and furthermore to see a histogram of the time when the most Numbats were found.
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-07/readme.md
+```
