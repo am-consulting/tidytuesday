@@ -1,0 +1,150 @@
+```{r}
+# African Language Sentiment
+# https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-02-28/readme.md
+
+# Loading packages/パッケージの読み込み
+# library(tidylog)
+library(tidyverse)
+library(plyr)
+library(ggpubr)
+library(gridExtra)
+library(grid)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data/ソースデータの読み込み
+afrisenti <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-28/afrisenti.csv')
+languages <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-28/languages.csv')
+language_scripts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-28/language_scripts.csv')
+language_countries <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-28/language_countries.csv')
+country_regions <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-02-28/country_regions.csv')
+
+# Glimpse
+afrisenti %>% glimpse()
+languages %>% glimpse()
+language_scripts %>% glimpse()
+language_countries %>% glimpse()
+country_regions %>% glimpse()
+
+# Check NA
+afrisenti %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x)))
+
+# Creating count table
+tmp <- aggregate(x = afrisenti$label,by = list(afrisenti$language_iso_code),FUN = function(x)table(x))
+df0 <- tmp[,2] %>% data.frame() %>% cbind('language_iso_code' = tmp[,1],.)
+df <- join(df0,languages)
+df$total <- df$negative + df$positive + df$neutral
+df
+
+# > df
+#    language_iso_code negative neutral positive               language total
+# 1                amh     3273    4104     2103                Amharic  9480
+# 2                arq     1590     582      851  Algerian Arabic/Darja  3023
+# 3                ary     2652    3317     3069 Moroccan Arabic/Darija  9038
+# 4                hau     7226    7597     7329                  Hausa 22152
+# 5                ibo     4013    6940     4762                   Igbo 15715
+# 6                kin     1788    1965     1402            Kinyarwanda  5155
+# 7                orm      948    1023      523                  Oromo  2494
+# 8                pcm     6380     524     3652        Nigerian Pidgin 10556
+# 9              pt-MZ     1633    4379     1480  Mozambican Portuguese  7492
+# 10               swa      319    1784      908                Swahili  3011
+# 11               tir     1185     509      704               Tigrinya  2398
+# 12               tso      446     214      601               Xitsonga  1261
+# 13               twi     1815     726     2277                    Twi  4818
+# 14               yor     3296    5487     6344                 Yorùbá 15127
+
+# Level decreasing by total numbers
+total <- df$total %>% order(decreasing = T) %>% df$language[.]
+
+# Level decrasing by percentage of each sentiments
+positive <- (df$positive/df$total) %>% order(decreasing = T) %>% df$language[.];positive
+negative <- (df$negative/df$total) %>% order(decreasing = T) %>% df$language[.];negative
+neutral <- (df$neutral/df$total) %>% order(decreasing = T) %>% df$language[.];neutral
+
+# tidy data
+tidydf <- df %>% select(c(language,positive,negative,neutral)) %>% gather(key = 'key',value = 'value',colnames(.)[-1])
+
+# > head(tidydf)
+#                 language      key value
+# 1                Amharic positive  2103
+# 2  Algerian Arabic/Darja positive   851
+# 3 Moroccan Arabic/Darija positive  3069
+# 4                  Hausa positive  7329
+# 5                   Igbo positive  4762
+# 6            Kinyarwanda positive  1402
+
+# > tail(tidydf)
+#                 language     key value
+# 37 Mozambican Portuguese neutral  4379
+# 38               Swahili neutral  1784
+# 39              Tigrinya neutral   509
+# 40              Xitsonga neutral   214
+# 41                   Twi neutral   726
+# 42                Yorùbá neutral  5487
+
+# Function for bar plot
+titlefontsize <- 18
+axistextsize <- 15
+legendtextsize <- 15
+func_ggplot_bar <- function(tidydf,position,level,plottitle){
+  sentiment <- c('positive','neutral','negative')
+  tidydf$language <- tidydf$language %>% factor(levels = eval(parse(text = level)) %>% rev())
+  tidydf$key <- tidydf$key %>% factor(levels = c(sentiment[!sentiment %in% level],sentiment[sentiment %in% level]))
+  print(tidydf$key)
+  g <- 
+    tidydf %>% 
+    ggplot(mapping = aes(x = language,y = value,fill = key)) + 
+    geom_bar(position = position, stat="identity") + 
+    coord_flip() + 
+    theme_minimal() + 
+    theme(legend.title = element_blank(),
+          axis.title = element_blank(),
+          axis.text = element_text(size = axistextsize),
+          plot.title = element_text(size = titlefontsize),
+          legend.text = element_text(size = legendtextsize)) +
+    scale_fill_manual(values = c('positive' = 'orange','negative' = 'grey','neutral' = 'skyblue')) + 
+    labs(title = plottitle)
+  return(g)
+}
+
+# Creating charts
+gg <- list()
+
+gg[[1]] <- 
+  func_ggplot_bar(tidydf = tidydf,position = 'stack',level = 'total',
+                  plottitle = 'Descending order by total number of tweet samples')
+gg[[2]] <- 
+  func_ggplot_bar(tidydf = tidydf,position = 'fill',level = 'positive',
+                  plottitle = 'Descending order\n by percentage of positive tweets') +
+  scale_y_continuous(labels = function(x)paste0(x*100,' %'))
+gg[[3]] <- 
+  func_ggplot_bar(tidydf = tidydf,position = 'fill',level = 'neutral',
+                  plottitle = 'Descending order\n by percentage of neutral tweets') + 
+  scale_y_continuous(labels = function(x)paste0(x*100,' %'))
+gg[[4]] <- 
+  func_ggplot_bar(tidydf = tidydf,position = 'fill',level = 'negative',
+                  plottitle = 'Descending order\n by percentage of negative tweets') + 
+  scale_y_continuous(labels = function(x)paste0(x*100,' %'))
+
+layout_matrix <- rbind(c(1,1,1),c(2,3,4))
+g <- arrangeGrob(grobs = gg,
+                  ncol = 3,
+                  nrow = 2,
+                  layout_matrix = layout_matrix,
+                  widths = c(1,1,1),
+                  heights = c(1,1),
+                  top = textGrob('African Language Sentiment\n',
+                                 gp=gpar(fontsize = 25))) %>% as_ggplot()
+g
+
+# Chart output/チャートの出力
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-02-28-african-language-sentiment.png"),width = 1500,height = 1000)
+g %>% print()
+dev.off()
+
+# ALT
+## Chart type : One stacked bar plot and three filled bar plot
+## Type of data : Sentiment analysis of tweets written in African language.
+## Reason for including the chart : Use the results of the sentiment analysis of tweets written in African languages to identify the sample size per language and the characteristics of each language by displaying the percentages of positive, neutral and negative per language in descending order.
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-02-28/readme.md
+```
