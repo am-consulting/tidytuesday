@@ -1,0 +1,170 @@
+```{r}
+# European Drug Development
+# https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-14/readme.md
+
+# Loading packages/パッケージの読み込み
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data/ソースデータの読み込み
+drugs0 <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-14/drugs.csv')
+
+# Glimpse
+drugs0 %>% glimpse()
+
+# Check NA
+drugs0 %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+
+
+# Filter by authorisation_status
+drugs <- drugs0 %>% filter(authorisation_status=="authorised")
+#                                                .
+# category                                       0
+# medicine_name                                  0
+# therapeutic_area                             285
+# common_name                                    4
+# active_substance                               1
+# product_number                                 0
+# patient_safety                                 0
+# authorisation_status                           1
+# atc_code                                      28
+# additional_monitoring                          0
+# generic                                        0
+# biosimilar                                     0
+# conditional_approval                           0
+# exceptional_circumstances                      0
+# accelerated_assessment                         0
+# orphan_medicine                                0
+# marketing_authorisation_date                  60
+# date_of_refusal_of_marketing_authorisation  1913
+# marketing_authorisation_holder_company_name    4
+# pharmacotherapeutic_group                     34
+# date_of_opinion                              779
+# decision_date                                 45
+# revision_number                               96
+# condition_indication                          12
+# species                                     1709
+# first_published                                0
+# revision_date                                 29
+# url                                            0
+
+# Split by category
+drugs$category %>% unique()
+# [1] "human"      "veterinary"
+drugs_human <- drugs %>% filter(category=='human')
+
+# European Drug Development(only human,authorised)
+# Functions
+fun_histogram <- function(df,colname){
+  obj <- df[,colname]
+  item <- obj[[1]] %>% str_split(';|,') %>% unlist() %>% gsub('^\\s*','',.)
+  df_hist <- item %>% table() %>% data.frame() %>% {colnames(.) <- c(colname,'N');.}
+  df_hist <- df_hist$N %>% order(decreasing = T) %>% df_hist[.,]
+  row.names(df_hist) <- NULL
+  return(df_hist)
+}
+fun_extract_upper_level <- function(df0,n_tail){
+  {df0[n_tail,'N'] <= df0$N} %>% df0[.,] %>% return()
+}
+fun_bar_plot <- function(df,bar_col,plottitle){
+  df[,1] <- df[,1] %>% factor(levels = df[,1] %>% rev())
+  ggplot(mapping = aes(x = df[,1],y = df[,2])) + 
+    geom_bar(stat = 'identity',fill = bar_col) + coord_flip() + 
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          plot.title = element_text(size = 16),
+          axis.text = element_text(size = 15)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(10)) %>% 
+    labs(title = plottitle) %>% return()
+}
+
+# List for plot
+g <- list()
+
+# Histogram of therapeutic area
+g[[2]] <- 
+  fun_histogram(df = drugs_human,colname = 'therapeutic_area') %>%  
+  fun_extract_upper_level(n_tail = 10) %>% 
+  fun_bar_plot(bar_col = 'grey50',plottitle = 'Counts by\n therapeutic area of drugs')
+
+# Histogram of active substance
+g[[3]] <- 
+  fun_histogram(df = drugs_human,colname = 'active_substance') %>%  
+  fun_extract_upper_level(n_tail = 10) %>% 
+  fun_bar_plot(bar_col = 'grey50',plottitle = 'Counts by\n active substance of drugs')
+
+# Histogram of marketing authorisation holder company name
+g[[4]] <- 
+  fun_histogram(df = drugs_human,colname = 'marketing_authorisation_holder_company_name') %>%  
+  fun_extract_upper_level(n_tail = 10) %>% 
+  fun_bar_plot(bar_col = 'grey50',plottitle = 'Counts by\n marketing authorisation holder company name of drugs')
+
+# History of first published
+drugs_human$first_published %>% range()
+# [1] "2013-11-25 13:06:00 UTC" "2023-03-09 18:50:00 UTC"
+
+daterange <- 
+  drugs_human$first_published %>% 
+  range() %>% 
+  as.Date() %>% 
+  {c(.[1] %m+% months(1) %>% floor_date(unit = "month"),.[2] %m-% months(1) %>% floor_date(unit = "month"))}
+daterange
+# [1] "2013-12-01" "2023-02-01"
+
+buf <- 
+  drugs_human %>% 
+  filter(first_published >= daterange[1] & first_published <= daterange[2])
+buf$first_published %>% range()
+# [1] "2013-12-19 13:09:00 UTC" "2022-12-22 17:26:00 UTC"
+
+buf$yyyymm <- 
+  buf$first_published %>% 
+  format('%Y-%m-1') %>% 
+  as.Date()
+
+tsdf <- 
+  buf$yyyymm %>% 
+  table() %>% 
+  data.frame() %>% 
+  {colnames(.) <- c('Yearmon','Count');.}
+tsdf$Yearmon <- tsdf$Yearmon %>% as.Date()
+
+g[[1]] <- 
+  tsdf %>% 
+  ggplot(mapping = aes(x = Yearmon,y = Count)) + 
+  geom_bar(stat = 'identity',fill = 'grey50') + 
+  theme_minimal() +
+  theme(axis.title = element_blank(),
+        plot.title = element_text(size = 17),
+        axis.text = element_text(size = 15),
+        plot.subtitle = element_text(size = 16)) + 
+  scale_x_date(breaks = scales::pretty_breaks(10)) + 
+  labs(title = 'Timeline of the number of drugs information first published',
+       subtitle = daterange %>% format('%Y/%m') %>% paste0(collapse = ' - '))
+
+layout_matrix <- rbind(c(1,1,1),c(2,3,4))
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob('European Drug Development\n- For human, only authorised -',
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+gg
+
+# Chart output/チャートの出力
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-03-14-european-drug-development.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+## Chart type : One time series bar plot and three bar plot of histogram
+## Type of data : Time series of the number of drugs information first published per month for drugs authorised for human use in Europe for approximately 10 years from December 2013 to February 2023 and a histogram of the drug's therapeutic area, active substance and marketing authorisation holder company name.
+## Reason for including the chart : First, we will review the chronological changes in the first public release of information on drugs approved in Europe, and then we will identify the areas in which most drugs are approved, what chemicals are used most often, and which companies have the most drugs approved.
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-14/readme.md
+```
