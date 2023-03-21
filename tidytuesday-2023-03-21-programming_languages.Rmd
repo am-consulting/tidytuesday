@@ -1,0 +1,221 @@
+```{r}
+# Programming Languages
+# https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-21/readme.md
+
+# Loading packages
+# library(tidylog)
+library(tidyverse)
+library(ggpattern)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+languages <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-21/languages.csv')
+
+# Glimpse
+languages %>% glimpse()
+
+# Check NA
+languages %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+#                                      .
+# pldb_id                              0
+# title                                0
+# description                       3480
+# type                                 0
+# appeared                             0
+# creators                          3203
+# website                           2928
+# domain_name                       3588
+# domain_name_registered            3801
+# reference                         2314
+# isbndb                            3217
+# book_count                           0
+# semantic_scholar                  3545
+# language_rank                        0
+# github_repo                       3402
+# github_repo_stars                 3414
+# github_repo_forks                 3417
+# github_repo_updated               3418
+# github_repo_subscribers           3418
+# github_repo_created               3425
+# github_repo_description           3438
+# github_repo_issues                3518
+# github_repo_first_commit          3567
+# github_language                   3829
+# github_language_tm_scope          3837
+# github_language_type              3837
+# github_language_ace_mode          3838
+# github_language_file_extensions   3833
+# github_language_repos             3833
+# wikipedia                         2731
+# wikipedia_daily_page_views        2837
+# wikipedia_backlinks_count         2877
+# wikipedia_summary                 2884
+# wikipedia_page_id                 2893
+# wikipedia_appeared                2958
+# wikipedia_created                 3040
+# wikipedia_revision_count          3130
+# wikipedia_related                 3145
+# features_has_comments             3683
+# features_has_semantic_indentation 3722
+# features_has_line_comments        3765
+# line_comment_token                3831
+# last_activity                        0
+# number_of_users                      0
+# number_of_jobs                       0
+# origin_community                  1190
+# central_package_repository_count  1482
+# file_type                         3213
+# is_open_source                    3792
+
+# duplicated
+languages$title %>% duplicated() %>% which() %>% languages$title[.] %>% matrix()
+#       [,1]                       
+#  [1,] "CIL"                      
+#  [2,] "GAMS"                     
+#  [3,] "Luna"                     
+#  [4,] "Shakespeare"              
+#  [5,] "Hyperscript"              
+#  [6,] "WML"                      
+#  [7,] "Q"                        
+#  [8,] "Vale"                     
+#  [9,] "Linden Scripting Language"
+# [10,] "Janus"                    
+# [11,] "Ante"                     
+# [12,] "Z"                        
+# [13,] "DML"                      
+# [14,] "V"                        
+# [15,] "Red"                      
+# [16,] "NCAR Command Language"    
+# [17,] "V"                        
+# [18,] "PL/I"                     
+# [19,] "Broccoli"                 
+# [20,] "Broccoli"                 
+# [21,] "OPL"                      
+# [22,] "MDL"                      
+# [23,] "Alma"                     
+# [24,] "UnQL"                     
+# [25,] "Fable"                    
+# [26,] "Heron"                    
+# [27,] "Lorel"                    
+# [28,] "RPL"                      
+# [29,] "TAO"                      
+# [30,] "Blade"                    
+# [31,] "SR"                       
+# [32,] "Bounce"                   
+# [33,] "D4"                       
+# [34,] "NPL"                      
+# [35,] "SIL"                      
+# [36,] "XQL"  
+
+# abuot R
+(languages$title=="R") %>% languages[.,] %>% t %>% head(10)
+#                        [,1]                             
+# pldb_id                "r"                              
+# title                  "R"                              
+# description            NA                               
+# type                   "pl"                             
+# appeared               "1993"                           
+# creators               "Ross Ihaka and Robert Gentleman"
+# website                "https://www.r-project.org"      
+# domain_name            "r-project.org"                  
+# domain_name_registered "1999"                           
+# reference              NA    
+
+# R vs Python
+rvspython <- languages$title %>% grep('^(R|Python)$',.) %>% languages[.,]
+rvspython <- rvspython %>% apply(MARGIN = 2,FUN = function(x)!any(is.na(x))) %>% rvspython[,.]
+
+# bar chart
+df <- languages[,c("title","wikipedia_daily_page_views","number_of_users","number_of_jobs")] %>% data.frame(check.names = F)
+df %>% head()
+#        title wikipedia_daily_page_views number_of_users number_of_jobs
+# 1       Java                       5242         5550123          85206
+# 2 JavaScript                       4264         5962666          63993
+# 3          C                       6268         3793768          59919
+# 4     Python                       7204         2818037          46976
+# 5        SQL                       3084         7179119         219617
+# 6        C++                       4307         4128238          61098
+
+# function for plot
+# https://coolbutuseless.github.io/package/ggpattern/articles/pattern-image.html
+# https://coolbutuseless.github.io/package/ggpattern/articles/geom-gallery-array.html#geom-bar-pattern-coord-flip-and-fit-image-to-height-and-graivty-towards-the-east-
+fun_plot <- function(df,ccc){
+  df0 <- df[,ccc] %>% order(decreasing = T) %>% df[.,c(1,ccc)]
+  df0 <- df0$title %>% grep('^(R|Python)$',.) %>% max() %>% {df0[c(1:.),]}
+  charttitle <- colnames(df0)[2] %>% gsub('_',' ',.)
+  colnames(df0) <- c('x','y')
+  row.names(df0) <- NULL
+  df0$x <- df0$x %>% factor(levels = rev(df0$x))
+  logos <- rep('',nrow(df0))
+  logos <- (df0$x=='Python') %>% which() %>% 
+    {logos[.] <- 'https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/files/python-logo-only.svg';logos}
+  logos <- (df0$x=='R') %>% which() %>% 
+    {logos[.] <- 'https://www.r-project.org/logo/Rlogo.svg';logos}
+  logos <- rev(logos)
+  g <- 
+    df0 %>% 
+    ggplot(mapping = aes(x = x,y = y,fill = x)) + 
+    geom_bar_pattern(mapping = aes(pattern_filename =x),
+                     stat = 'identity', 
+                     pattern = 'image',
+                     pattern_type = 'fit',
+                     fill = 'white', 
+                     colour = 'black',
+                     pattern_filter = 'point',
+                     pattern_gravity = 'east') +
+    scale_pattern_filename_discrete(choices = logos) + 
+    coord_flip() + 
+    theme(legend.position = 'non',
+          axis.title = element_blank(),
+          axis.text = element_text(size = 15),
+          plot.title = element_text(size = 16)) + 
+    labs(title = charttitle) + 
+    scale_y_continuous(labels = function(x)formatC(x = x,big.mark = ',',format = 'fg'))
+  return(g)
+}
+g <- list()
+g[[2]] <- fun_plot(df = df,ccc = 2)
+g[[3]] <- fun_plot(df = df,ccc = 3)
+g[[4]] <- fun_plot(df = df,ccc = 4)
+
+# Create table
+tab <- 
+  rvspython[,c("pldb_id","title","type","appeared","creators","website","domain_name_registered","origin_community","file_type")] %>% 
+  t %>% 
+  data.frame()
+colnames(tab) <- tab[1,]
+tab <- tab[-1,]
+row.names(tab) <- row.names(tab) %>% gsub('_',' ',.)
+g[[1]] <- 
+  tab %>% 
+  ggpubr::ggtexttable(theme = ggpubr::ttheme(base_style = 'blank', 
+                                             base_size = 20)) %>%
+  ggpubr::tab_add_hline(at.row = 1:2,
+                        row.side = "top",
+                        linewidth = 2)
+
+layout_matrix <- rbind(c(1,2),c(3,4))
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob('Programming Languages\n- R vs Python -',
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+gg
+
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-03-21-programming-languages.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+## Chart type : One table comparing Python and R for appeared year, creators and other items and three bar plots.
+## Type of data : The top programming languages for each of the three items "wikipedia daily page views","number of users" and "number of jobs" are shown in descending order in a bar chart. 
+## Reason for including the chart : The debate over whether to learn R or Python for statistical analysis is endless. This chart compares the number of users, job openings, and Wikipedia references for both languages, as well as other languages, to help you decide which language to choose, whether to learn both languages, or switch to another language.
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-03-21/readme.md
+```
