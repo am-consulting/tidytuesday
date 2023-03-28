@@ -1,0 +1,240 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Time Zones
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-03-28
+
+# html output : https://saecanet.com/tidytuesday-2023-03-28-time-zones.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+library(dplyr)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+transitions <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-28/transitions.csv')
+timezones <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-28/timezones.csv')
+timezone_countries <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-28/timezone_countries.csv')
+countries <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-28/countries.csv')
+
+# Glimpse
+glimpse(transitions)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(timezones)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(timezone_countries)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(countries)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check duplicated
+transitions %>% apply(MARGIN = 2,FUN = function(x)any(duplicated(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+timezones %>% apply(MARGIN = 2,FUN = function(x)any(duplicated(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+timezone_countries %>% apply(MARGIN = 2,FUN = function(x)any(duplicated(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+countries %>% apply(MARGIN = 2,FUN = function(x)any(duplicated(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+countries %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+countries$country_code %>% is.na() %>% which() %>% countries[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Change NA processing when reading csv files because Namibia's country code is NA.
+countries <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-03-28/countries.csv',na = 'NotAvailable')
+countries$country_code %>% is.na() %>% which() %>% countries[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check for NA since the timezone_countries data also has a country code.
+timezone_countries$country_code %>% is.na() %>% sum()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Chart 1
+
+# Check the number of time zones per country.
+
+# timezone_countries$country_code %>% duplicated()
+g <- list()
+buf <- timezone_countries$country_code %>% table() %>% data.frame()
+buf <- buf[,2] %>% order(decreasing = T) %>% buf[.,]
+colnames(buf) <- c('country_code','number_of_timezones')
+df_tz <- plyr::join(buf,countries)
+df_tz %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+na_place_name <- df_tz$place_name %>% is.na() %>% df_tz$country_code[.]
+na_place_name
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# The respective country codes of the timezone_countries data and the countries data do not match. Therefore, we obtained a list of country codes from the Internet.
+library(rvest)
+df_isocode <- read_html('https://countrycode.org/') %>% html_nodes('div.visible-sm') %>% html_table() %>% {.[[1]]}
+df_isocode$`ISO CODES` <- df_isocode$`ISO CODES` %>% gsub('^(.{2}).+$','\\1',.)
+head(df_isocode)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_isocode %>% apply(MARGIN = 2,FUN = function(x)any(duplicated(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+colnames(df_isocode) <- colnames(df_isocode) %>% gsub('^ISO.+$','country_code',.)
+head(df_isocode)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_isocode <- df_isocode[,c("country_code","COUNTRY")]
+colnames(df_isocode) <- colnames(countries)
+df_isocode$country_code %>% grep(paste0(na_place_name,collapse = '|'),.) %>% df_isocode[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+countries <- na_place_name %>% sapply(FUN = function(x)which(df_isocode$country_code==x)) %>% df_isocode[.,] %>% rbind(countries,.)
+df_tz <- plyr::join(buf,countries)
+df_tz %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Extract countries with more than 4 time zones.
+df_tz %>% head(20)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+df_tz$place_name <- df_tz$place_name %>% factor(levels = rev(df_tz$place_name))
+g[[1]] <- 
+  (df_tz$number_of_timezones>=4) %>% 
+  df_tz[.,c("place_name","number_of_timezones")] %>% 
+  ggplot(mapping = aes(x = place_name,y = number_of_timezones)) + 
+  geom_bar(stat = 'identity',fill = 'skyblue') + 
+  coord_flip() + 
+  theme_minimal() + 
+  labs(title = 'Countries with more than 4 time zones')
+g[[1]]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Chart 2
+library(lubridate)
+active_dst_df <- transitions$dst %>% transitions[.,]
+glimpse(active_dst_df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+active_df <- transitions %>% filter(dst==T)
+active_2023_df <- ((active_df$begin %>% year)==2023) %>% active_df[.,]
+active_2023_df$zone %>% duplicated %>% sum
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+month_day_dst_df <- active_2023_df$begin %>% as_datetime() %>% {paste0(month(.),'/',day(.))} %>% table() %>% data.frame()
+colnames(month_day_dst_df) <- c('month/day','number_of_timezones')
+month_day_dst_df <- month_day_dst_df$number_of_timezones %>% order(decreasing = T) %>% month_day_dst_df[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+month_day_dst_df$`month/day` <- month_day_dst_df$`month/day` %>% factor(levels = rev(month_day_dst_df$`month/day`))
+g[[2]] <- 
+  month_day_dst_df %>% 
+  ggplot(mapping = aes(x = `month/day`,y = number_of_timezones)) + 
+  geom_bar(stat = 'identity',fill = 'skyblue') + 
+  coord_flip() + 
+  theme_minimal() + 
+  labs(title = 'Date when day saving time begins in 2023')
+g[[2]]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Chart 3
+# Number of days of daylight savings time period in 2023
+active_2023_df$begin <- active_2023_df$begin %>% as_datetime() 
+active_2023_df$end <- active_2023_df$end %>% as_datetime() 
+days_dst_2023 <- round(active_2023_df$end - active_2023_df$begin) %>% table() %>% data.frame()
+colnames(days_dst_2023) <- c('Number of days','number_of_timezones')
+days_dst_2023$`Number of days` <- days_dst_2023$`Number of days` %>% paste0(.,' days')
+days_dst_2023 <- days_dst_2023$number_of_timezones %>% order(decreasing = T) %>% days_dst_2023[.,]
+days_dst_2023
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+days_dst_2023$`Number of days` <- days_dst_2023$`Number of days` %>% factor(levels = rev(days_dst_2023$`Number of days`))
+g[[3]] <- 
+  days_dst_2023 %>% 
+  ggplot(mapping = aes(x = `Number of days`,y = number_of_timezones)) + 
+  geom_bar(stat = 'identity',fill = 'skyblue') + 
+  coord_flip() + 
+  theme_minimal() + 
+  labs(title = 'Duration of day saving time in 2023')
+g[[3]]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- c(1,2,3) %>% matrix(nrow = 1)
+g[[1]] <- g[[1]] + theme(axis.title = element_text(size = 18),
+                         axis.text = element_text(size = 17),
+                         plot.title = element_text(size = 19))
+g[[2]] <- g[[2]] + theme(axis.title = element_text(size = 18),
+                         axis.text = element_text(size = 17),
+                         plot.title = element_text(size = 19))
+g[[3]] <- g[[3]] + theme(axis.title = element_text(size = 18),
+                         axis.text = element_text(size = 17),
+                         plot.title = element_text(size = 19))
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+  #                       heights = c(1,1,1),
+                         top = grid::textGrob('Time Zones\n',
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-03-28-time-zones.png"),width = 1400,height = 800)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Three bar charts
+
+## Type of data : Histograms of the number of time zones per country and the starting date and duration of daylight savings time in 2023 are shown in bar charts. 
+
+## Reason for including the chart : Check the number of time zones in different countries and whether it depends on the size of the country. In addition When does daylight saving time usually begin and how long does it usually last?
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-03-28
+```
+
+# `r referencetxt`
+
+1. https://www.zeitverschiebung.net/en/country/us
