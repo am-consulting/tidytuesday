@@ -1,0 +1,240 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Premier League Match Data 2021-2022
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-04
+
+# html output : https://saecanet.com/tidytuesday-2023-04-04-premier-league-match-data-2021-2022.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+soccer <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-04/soccer21-22.csv')
+
+# Glimpse
+glimpse(soccer)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+soccer %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check date range
+soccer$Date <- soccer$Date %>% gsub('([0-9]+)/([0-9]+)/([0-9]+)','\\3-\\2-\\1',.) %>% as.Date()
+daterange <- soccer$Date %>% range()
+daterange
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Chech number of matches
+nom <- nrow(soccer)
+nom
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+soccer$FTR %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- list()
+library(rgabriel)
+packageVersion("rgabriel")
+rgabriel
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# functions
+fun_gabriel_barplot <- function(df,alpha = 0.05,plottitle){
+  # Calculate the average 
+  X <- df$X
+  INDEX <- df$INDEX
+  result_mean <-  tapply(X = X,INDEX = INDEX,FUN = mean)
+  result_mean
+  # Calculate Gabriel's confidence interval
+  result_gci <- rgabriel(x = X,f = INDEX,a = alpha/2)
+  result_gci
+  # With error
+  upper_limit <- result_mean + result_gci
+  lower_limit <- result_mean - result_gci
+  # t test
+  levels_name <- INDEX %>% levels()
+  result_ttest <- 
+    t.test(x = df$X[df$INDEX==levels_name[1]],
+           y = df$X[df$INDEX==levels_name[2]],
+           alternative = 'two.sided',
+           paired = F,
+           var.equal = F,
+           conf.level = 1-alpha)
+  pvalue <- result_ttest$p.value %>% format(digits = 3,scientific = T)
+  # ggplot
+  g <- 
+    ggplot(data = result_mean %>% data.frame(INDEX = names(.),X = .),
+           mapping = aes(x = INDEX,y = X,fill = INDEX)) + 
+    geom_bar(stat = 'identity') +
+    geom_errorbar(mapping = aes(ymin = lower_limit, 
+                                ymax = upper_limit),
+                  width = 0.1) +
+    theme_minimal() + 
+    theme(legend.position = 'none',axis.title = element_blank())
+  g <- 
+    g + 
+    labs(title = plottitle,subtitle = paste0("\np-value : ",pvalue))
+  # gabriel.plot(x = X,f = INDEX,rgabriel(x = X,f = INDEX,a = alpha/2))
+  return(list(g = g,resultdf = rbind(result_mean,result_gci,upper_limit,lower_limit)))
+}
+fun_df <- function(A,H){
+  df <- 
+    data.frame(
+      INDEX = factor(c(rep('A',length(A)),rep('H',length(H))),levels = c('A','H')),
+      X = c(A,H))
+  return(df)
+}
+```
+
+## Average number of full time goals per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$FTAG
+H <- soccer$FTHG
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of full time goals per game')
+tmp$g
+g[[1]] <- tmp$g
+tmp$resultdf
+```
+
+## Average number of shots per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$AS
+H <- soccer$HS
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of shots per game')
+tmp$g
+g[[2]] <- tmp$g
+tmp$resultdf
+```
+
+## Average number of fouls per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$AF
+H <- soccer$HF
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of fouls per game')
+tmp$g
+g[[3]] <- tmp$g
+tmp$resultdf
+```
+
+## Average number of corners per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$AC
+H <- soccer$HC
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of corners per game')
+tmp$g
+g[[4]] <- tmp$g
+tmp$resultdf
+```
+
+## Average number of yellow cards per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$AY
+H <- soccer$HY
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of yellow cards per game')
+tmp$g
+g[[5]] <- tmp$g
+tmp$resultdf
+```
+
+## Average number of red cards per game
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+A <- soccer$AR
+H <- soccer$HR
+df <- fun_df(A = A,H = H)
+glimpse(df)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+tmp <- fun_gabriel_barplot(df = df,plottitle = 'Average number of red cards per game')
+tmp$g
+g[[6]] <- tmp$g
+tmp$resultdf
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- c(1,2,3,4,5,6) %>% matrix(nrow = 2,byrow = T)
+for(iii in seq(g)){
+  g[[iii]] <- g[[iii]] + 
+    theme(axis.text = element_text(size = 17),
+          plot.title = element_text(size = 19),
+          plot.subtitle = element_text(size = 16))
+}
+label <- paste0('Is there any difference between Home(H) and Away(A) ?\n',
+                daterange %>% format('%Y/%m/%d') %>% paste0(collapse = ' - '),', ',nom,' matches\n')
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label,
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-04-04-premier-league-match-data-2021-2022.png"),width = 1400,height = 800)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : 6 barplots with Gabriel comparison intervals
+
+## Type of data : Comparison of home team and away team averages for goals, shots, fouls, corners, yellow cards and red cards per game for all 380 Premier League games from August 2021 to May 2022
+
+## Reason for including the chart : Bar charts with Gabriel comparison intervals makes it easy to compare the average number of goals, shots, fouls, corners, yellow cards, and red cards per game between the home and away teams. The p-values of the t-tests are also included.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-04
+```
+
+# `r referencetxt`
+
+1. https://www.statisticsdonewrong.com/significant-differences.html
+1. https://documentation.sas.com/doc/en/pgmsascdc/9.4_3.4/statug/statug_glm_details29.htm
