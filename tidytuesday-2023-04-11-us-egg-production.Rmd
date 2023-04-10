@@ -1,0 +1,158 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# US Egg Production
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-11
+
+# html output : https://saecanet.com/tidytuesday-2023-04-11-us-egg-production.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+eggproduction  <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-11/egg-production.csv')
+cagefreepercentages <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-11/cage-free-percentages.csv')
+
+# Glimpse
+glimpse(eggproduction)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(cagefreepercentages)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+eggproduction %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+cagefreepercentages %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check description
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-11' %>% read_html()  %>% html_table())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_description[[4]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_description[[5]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check items
+eggproduction[,c("prod_type","prod_process")] %>% apply(MARGIN = 2,FUN = function(x)unique(x))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+eggproduction$eggs_per_hen <- eggproduction$n_eggs/eggproduction$n_hens
+eggproduction$type_process <- paste0(eggproduction$prod_type,':',eggproduction$prod_process)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+eggproduction$n_eggs %>% range()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+eggproduction$n_hens %>% range()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Change unit
+eggproduction[,c("n_hens","n_eggs")] <- 
+  eggproduction[,c("n_hens","n_eggs")] %>% apply(MARGIN = 2,FUN = function(x)x*10^-6)
+n_unit <- 'Unit:million'
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# function for ggplot
+fun_ggplot <- 
+  function(df,titlename,subtitle){
+    colnames(df)[1:2] <- c('date','value')
+    g <- 
+      df %>% 
+      ggplot(mapping = aes(x = date,y = value,col = type_process)) + 
+      geom_line() + 
+      geom_point() + 
+      facet_wrap(facets = .~type_process,scales = 'free_y') + 
+      theme_minimal() + 
+      theme(legend.position = 'none',axis.title = element_blank()) + 
+      labs(title = titlename,subtitle = subtitle) +
+      geom_smooth(method = 'loess')
+    return(g)
+  }
+g <- list()
+(daterange <- eggproduction$observed_month %>% range() %>% format('%Y/%m/%d') %>% paste0(collapse = ' - '))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+df <- eggproduction[,c("observed_month","n_eggs","type_process")]
+titlename <- 'Number of eggs produced by hens'
+subtitle <- n_unit
+(g[[1]] <- fun_ggplot(df = df,titlename = titlename,subtitle = subtitle))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+df <- eggproduction[,c("observed_month","n_hens","type_process")]
+titlename <- 'Number of hens producing eggs'
+subtitle <- n_unit
+(g[[2]] <- fun_ggplot(df = df,titlename = titlename,subtitle = subtitle))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+df <- eggproduction[,c("observed_month","eggs_per_hen","type_process")]
+titlename <- 'Number of eggs produced by one hen'
+subtitle <- ''
+(g[[3]] <- fun_ggplot(df = df,titlename = titlename,subtitle = subtitle))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- c(1,2,3) %>% matrix(nrow = 1,byrow = T)
+for(iii in seq(g)){
+  g[[iii]] <- g[[iii]] + 
+    theme(axis.text = element_text(size = 17),
+          plot.title = element_text(size = 19),
+          plot.subtitle = element_text(size = 16),
+          strip.text = element_text(size = 14))
+}
+label <- paste0('US Egg Production\n',daterange,' \n')
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label,
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-04-11-us-egg-production.png"),width = 1700,height = 800)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Four time series charts for each of the three categories.
+
+## Type of data : Time series data on the number of eggs produced by hens, the number of hens producing eggs, and the number of eggs produced by one hen in the United States by egg type (hatching or table) and production process(cage-free (organic), cage-free (non-organic), all(cage-free and conventional housing)).
+
+## Reason for including the chart : Time-series chart with loess curves to identify time-series trends in egg production and hen counts for each egg type and production process in the United States.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-04-11/readme.md
+```
