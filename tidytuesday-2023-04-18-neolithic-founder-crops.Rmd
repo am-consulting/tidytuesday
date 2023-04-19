@@ -1,0 +1,164 @@
+# Code
+
+- Founder crops:『The founder crops (or primary domesticates) are the eight plant species that were domesticated by early Neolithic farming communities in Southwest Asia and went on to form the basis of agricultural economies across much of Eurasia, including Southwest Asia, South Asia, Europe, and North Africa.』(source:https://en.wikipedia.org/wiki/Founder_crops)
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Neolithic Founder Crops
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-18
+
+# html output : https://saecanet.com/tidytuesday-2023-04-18-neolithic-founder-crops.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+founder_crops <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-18/founder_crops.csv')
+
+# Glimpse
+glimpse(founder_crops)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check description
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-18' %>% read_html()  %>% html_table())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Display description
+df_description[[1]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+founder_crops %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check number of items without NA
+founder_crops %>% apply(MARGIN = 2,FUN = function(x)length(na.omit(unique(x)))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check items
+# family("科" in Japanese),genus("属" in Japanese)
+obj_colnames <- c("source","genus","family","category","founder_crop","edibility","grass_type","legume_type")
+(list_fc <- founder_crops[,obj_colnames] %>% apply(MARGIN = 2,FUN = function(x)unique(x)) %>% {names(.) <- obj_colnames;.})
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Create treemap
+library(treemapify)
+library(ggplot2)
+colnames(founder_crops) %>% data.frame()
+g <- list()
+fun_plot <- function(founder_crops,obj_col){
+  tmp <- founder_crops[,obj_col] %>% na.omit()
+  colnames(tmp) <- c('group1','group2')
+  df <- aggregate(x = tmp$group1,by = list(tmp$group1,tmp$group2),FUN = length)
+  colnames(df) <- c('group1','group2','value')
+  chart_subtitle <- paste0('N = ',nrow(tmp))
+  colnametitle <- colnames(founder_crops)[obj_col]
+  chart_title <- paste0('Number of observations  by ',colnametitle[1],',Subgroup:',colnametitle[2])
+  g <- 
+    ggplot(data = df,
+           mapping = aes(area = value, 
+                         fill = group1,
+                         label = paste(group1, value, sep = "\n"),
+                         subgroup = group2)) +
+    geom_treemap()  +
+    geom_treemap_subgroup_border(colour = "white", size = 20) +
+    geom_treemap_subgroup_text(place = "centre", 
+                               grow = F,
+                               alpha = 0.25, 
+                               colour = "black",
+                               fontface = "italic",
+                               size = 22) +
+    geom_treemap_text(colour = "white", 
+                      place = "centre",
+                      size = 19, 
+                      grow = F) + 
+    labs(title = chart_title,
+         subtitle = chart_subtitle) + 
+    theme(legend.position = 'none')
+  colnames(df) <- c(colnametitle,'Observations ')
+  return(list(g=g,df=df))
+}
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(21,1)))
+g[[1]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(20,1)))
+g[[2]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(22,1)))
+g[[3]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(23,1)))
+g[[4]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(24,1)))
+g[[5]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+(tmp <- fun_plot(founder_crops = founder_crops,obj_col = c(21,20)))
+g[[6]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 2,byrow = T)
+for(iii in seq(g)){
+  g[[iii]] <- g[[iii]] + 
+    theme(plot.title = element_text(size = 19),
+          plot.subtitle = element_text(size = 16))
+}
+label <- paste0('Composition of the data -Neolithic Founder Crops-\nTotal observations  = ',nrow(founder_crops),' \n')
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label,
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-04-18-neolithic-founder-crops.png"),width = 1700,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Six treemap charts.
+
+## Type of data : Total observations per element for the given data (founder_crops.csv,4490 obs. of 24 variables).
+
+## Reason for including the chart : The data given as "The "Neolithic Founder Crops" in Southwest Asia" is voluminous, so it is necessary to first get an overview of the main items. Therefore, we will compare the number of observations using treemap, which allows for aggregate comparison of large and small values, to get an overview of the data as a whole.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-18
+```
+
+# `r referencetxt`
+
+- https://r-charts.com/part-whole/treemapify/
