@@ -1,0 +1,179 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# London Marathon
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-25
+
+# html output : https://saecanet.com/tidytuesday-2023-04-25-london-marathon.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+winners <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-25/winners.csv')
+london_marathon <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-04-25/london_marathon.csv')
+
+# Glimpse
+glimpse(winners)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(london_marathon)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check description
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-25' %>% read_html()  %>% html_table())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Display description
+df_description[[1]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_description[[2]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check NA
+winners %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+london_marathon %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check to see if any of the players have won in more than one category.
+(tmp <- aggregate(x = winners$Category,by = list(winners$Athlete),FUN = function(x)length(unique(x))))
+tmp$x %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check to see if any of the winners have more than one nationality.
+(tmp <- aggregate(x = winners$Nationality,by = list(winners$Athlete),FUN = function(x)length(unique(x))))
+tmp$x %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Create a data frame for each category.
+categorys <- winners$Category %>% unique()
+(winners_by_category <- lapply(X = categorys,FUN = function(x)winners[x==winners$Category,]))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# function for plot 
+fun_ggplot <- function(iii,winners_by_category){
+  # Extract athletes who have won multiple times.
+  df <- winners_by_category[[iii]]
+  df_number_of_victories <- df$Athlete %>% table() %>% data.frame()
+  names_of_winners_who_won_multiple_times <- df_number_of_victories[df_number_of_victories[,2]!=1,1]
+  df_extracted <- df$Athlete %>% grep(paste0(names_of_winners_who_won_multiple_times,collapse = '|'),.) %>% df[.,]
+  # Calculate average Winning time
+  df_extracted_time <- aggregate(x = df_extracted$Time,by = list(df_extracted$Athlete),FUN = function(x){round(mean(x))})
+  df_extracted_time$HHMMSS <- hms::as_hms(df_extracted_time$x)
+  colnames(df_extracted_time)[1:2] <- c('Athlete','Average time')
+  # Extract the winning year
+  df_extracted_year <- aggregate(x = df_extracted$Year,by = list(df_extracted$Athlete),FUN = function(x){paste0(x,collapse = ',')})
+  colnames(df_extracted_year) <- c('Athlete','Year of victory')
+  # Extract Nationality
+  df_extracted_nationality <- aggregate(x = df_extracted$Nationality,by = list(df_extracted$Athlete),FUN = function(x){unique(x)})
+  colnames(df_extracted_nationality) <- c('Athlete','Nationality')
+  # join
+  objdf <- plyr::join_all(list(df_extracted_time,df_extracted_year,df_extracted_nationality))
+  objdf <- objdf$HHMMSS %>% order(decreasing = T) %>% objdf[.,]
+  objdf$Athlete <- paste0(objdf$Athlete,'(',objdf$Nationality,')')
+  objdf$Athlete <- objdf$Athlete %>% factor(levels = objdf$Athlete)
+  # ggplot
+  g <- 
+    ggplot(data = objdf,mapping = aes(x = Athlete,y = HHMMSS)) + 
+    geom_bar(stat = 'identity',fill = 'darkgreen') + 
+    coord_flip() + 
+    theme_minimal() +
+    geom_text(mapping = aes(label = paste(HHMMSS,'\n',`Year of victory`)),
+              hjust = 1.1,
+              col = 'white',
+              size = 5) + 
+    labs(title = df_extracted$Category %>% unique()) + 
+    ylab(label = 'Average time') +
+    xlab(label = '') +  scale_y_time(breaks = scales::breaks_width("30 min"))
+  return(list(g = g,objdf = objdf))
+}
+```
+
+```{r g1,eval=TRUE,echo=TRUE,results='hold',fig.show='asis',fig.height=8}
+g <- list()
+tmp <- fun_ggplot(iii = 1,winners_by_category = winners_by_category)
+(g[[1]] <- tmp$g)
+tmp$objdf
+```
+
+```{r g2,eval=TRUE,echo=TRUE,results='hold',fig.show='asis',fig.height=8}
+tmp <- fun_ggplot(iii = 2,winners_by_category = winners_by_category)
+(g[[2]] <- tmp$g)
+tmp$objdf
+```
+
+```{r g3,eval=TRUE,echo=TRUE,results='hold',fig.show='asis',fig.height=8}
+tmp <- fun_ggplot(iii = 3,winners_by_category = winners_by_category)
+(g[[3]] <- tmp$g)
+tmp$objdf
+```
+
+```{r g4,eval=TRUE,echo=TRUE,results='hold',fig.show='asis',fig.height=8}
+tmp <- fun_ggplot(iii = 4,winners_by_category = winners_by_category)
+(g[[4]] <- tmp$g)
+tmp$objdf
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 2,byrow = T)
+for(iii in seq(g)){
+  g[[iii]] <- g[[iii]] + 
+    theme(plot.title = element_text(size = 19),
+          axis.title = element_text(size = 16),
+          axis.text = element_text(size = 16))
+}
+label <- 'Names and nationalities of athletes who have won the London Marathon multiple times'
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label,
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-04-25-london-marathon.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Four bar chart
+
+## Type of data : The names of athletes who have won the London Marathon multiple times in each of the four categories (men, women, wheelchair men, and wheelchair women) are extracted and their nationalities, the list of winning years, and average times are displayed.
+
+## Reason for including the chart : Identify nationality trends of strong marathon runners who have won multiple times in each of the four categories. For example, Kenya has strong runners in the men's and women's categories, but no male or female runners have won multiple times in the wheelchair category.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-04-25
+```
+
+# `r referencetxt`
+
+- https://stackoverflow.com/questions/69440003/how-to-change-format-from-seconds-to-hhmmss
+- https://stackoverflow.com/questions/70010399/convert-number-hours-to-time-hhmm-in-x-axis-in-ggplot
+- https://stackoverflow.com/questions/50568227/set-interval-between-breaks-on-time-axis
