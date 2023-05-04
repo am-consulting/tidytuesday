@@ -1,0 +1,150 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# The Portal Project
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-02
+
+# html output : https://saecanet.com/tidytuesday-2023-05-02-the-portal-project.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+plots <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-02/plots.csv')
+species <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-02/species.csv')
+surveys <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-02/surveys.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(plots)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(species)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(surveys)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-02' %>% read_html()  %>% html_table())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Display description
+df_description[[4]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_description[[5]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_description[[6]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+plots %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+species %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+surveys %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Data frame by plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df <- surveys$plot %>% unique() %>% sort(decreasing = F) %>% lapply(FUN = function(x)surveys[which(x==surveys$plot),]))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- list()
+n_others <- 5
+for(iii in seq(df)){
+  daterange <- df[[iii]]$censusdate %>% range() %>% format('%Y/%m/%d') %>% paste0(collapse = '-')
+  charttitle <- paste0('plot : ',df[[iii]]$plot,'\ntreatment : ',df[[iii]]$treatment) %>% unique()
+  df_hist0 <- df[[iii]]$species %>% table() %>% data.frame() %>% {.[order(.[,2]),]}
+  colnames(df_hist0)[1] <- 'species'
+  df_hist <- head(df_hist0[,"Freq"],-n_others) %>% sum() %>% data.frame(species = 'Others',Freq = .) %>% rbind(.,tail(df_hist0,n_others))
+  df_hist$prop <- df_hist$Freq / sum(df_hist$Freq)*100
+  df_hist$ypos <- cumsum(df_hist$prop) - 0.5*df_hist$prop
+  df_hist$species <- df_hist$species %>% factor(levels = rev(df_hist$species))
+  if(sum(df_hist$Freq) == length(na.omit(df[[iii]]$species))){
+    g[[iii]] <- 
+      ggplot(data = df_hist,mapping = aes(x = "", y = prop, fill = species)) +
+      geom_bar(stat = "identity", width = 1, color="white") +
+      coord_polar(theta = "y",start = 0) +
+      theme_void() + 
+      theme(legend.position = "none",
+            plot.title = element_text(hjust = 0.5,size = 19),
+            plot.subtitle = element_text(hjust = 0.5,size = 16)) +
+      geom_text(aes(y = ypos, label = paste0(species,':',round(prop),'%')), color = "black", size = 6) + 
+      labs(title = charttitle,subtitle = daterange)
+  }else{
+    print('Something wrong.')
+  }
+}
+library(ggpubr)
+g[[iii+1]] <- 
+  species$species %>% 
+  order(decreasing = F) %>% 
+  species[.,c("species","commonname")] %>% 
+  ggtexttable(rows = NULL,theme = ttheme(base_size = 13,
+                                         colnames.style = colnames_style(size = 15)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 2,byrow = T)
+label <- 'Percentage of rodents per species for each plot in the Portal Project'
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 6,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = rep(1,6),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label,
+                                              gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-05-02-the-portal-project.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : 11 pie charts and 1 table.
+
+## Type of data : Rodent species and ratios by plot captured during a project to study the Chihuahuan Desert ecosystem that began near Portal, Arizona, in 1977.
+
+## Reason for including the chart : The pie chart makes it easy to compare the differences between plots with respect to the type and percentage of rodents caught.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-02
+```
+
+# `r referencetxt`
+
+- https://github.com/weecology/PortalData/blob/main/SiteandMethods/Methods.md
+- https://r-graph-gallery.com/piechart-ggplot2.html
+- https://stackoverflow.com/questions/68517917/r-ggplot-and-gt-outputs-how-can-i-combine-these-on-an-output-image
