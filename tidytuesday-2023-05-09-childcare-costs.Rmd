@@ -1,0 +1,176 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Childcare Costs
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-09
+
+# html output : https://saecanet.com/tidytuesday-2023-05-09-childcare-costs.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+childcare_costs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-09/childcare_costs.csv')
+counties <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-09/counties.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(childcare_costs)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(counties)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-09' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+```{r eval=TRUE,echo=TRUE,results='markup'}
+df_description[[2]] %>% knitr::kable() %>% kableExtra::kable_styling()
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+childcare_costs %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+counties %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Check duplicated
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+counties$county_fips_code %>% duplicated() %>% sum()
+```
+
+## Create data frame
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+study_year <- childcare_costs$study_year %>% unique()
+df_year <- study_year %>% lapply(FUN = function(x)(childcare_costs[x==childcare_costs$study_year,]))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_year[[1]]
+```
+
+## Check for duplicate county_fips_code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+tmp <- vector()
+for(iii in seq(df_year)){
+  tmp[iii] <- df_year[[iii]]$county_fips_code %>% duplicated() %>% sum()
+}
+sum(tmp)
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+fun_plot <- function(df_year,iii,counties,xlim_range,ylim_range){
+  df <- plyr::join(df_year[[iii]],counties)
+  if((df$county_fips_code %>% duplicated() %>% sum())==0){
+    df$compare <- ifelse(test = df$fme_2018/df$mme_2018 > 1,'Females have higher earnings','Males have higher earnings')
+    df_extracted <- (df$compare=='Females have higher earnings') %>% which() %>% df[.,]
+    df_extracted$label <- paste(df_extracted$county_name,df_extracted$state_name,sep = ',')
+    ratio <- round(nrow(df_extracted)/nrow(df)*100,2)
+    g <- 
+      ggplot(data = df,mapping = aes(x = fme_2018,y = mme_2018,col = compare)) + 
+      geom_point() + 
+      theme_minimal() + 
+      geom_abline(slope = 1,intercept = 0,col = 'black',size = 1) + 
+      ggrepel::geom_text_repel(mapping = aes(x = fme_2018,
+                                             y = mme_2018,
+                                             label = label),
+                               data = df_extracted,
+                               box.padding = 0.5,
+                               max.overlaps = Inf,
+                               size = 5,
+                               show.legend = F) + 
+      theme(legend.position = 'top',
+            legend.title = element_blank(),
+            plot.title = element_text(hjust = 0.5,size = 19),
+            plot.subtitle = element_text(hjust = 0.5,size = 16),
+            axis.title = element_text(size = 16),
+            axis.text = element_text(size = 16),
+            legend.text = element_text(size = 15)) + 
+      xlab('Females') + 
+      ylab('Males') + 
+      labs(title = paste0('Year ',df$study_year %>% unique()),
+           subtitle = paste0('Percentage of counties in which women have higher earnings:',ratio)) + 
+      scale_x_continuous(limits = xlim_range,breaks = scales::pretty_breaks(5),sec.axis = dup_axis(breaks = scales::pretty_breaks(5))) +       scale_y_continuous(limits = ylim_range,breaks = scales::pretty_breaks(7),sec.axis = dup_axis(breaks = scales::pretty_breaks(7)))
+    g <- ggExtra::ggMarginal(g,type = "density", fill = 'mediumseagreen')
+    return(g)
+  }else{
+    print('something wrong')
+  }
+}
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+xlim_range <- c(df_year[[1]]$fme_2018,df_year[[length(df_year)]]$fme_2018) %>% range()
+ylim_range <- c(df_year[[1]]$mme_2018,df_year[[length(df_year)]]$mme_2018) %>% range()
+g <- list()
+g[[1]] <- fun_plot(df_year = df_year,iii = 1,counties = counties,xlim_range = xlim_range,ylim_range = ylim_range)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g[[2]] <- fun_plot(df_year = df_year,iii = length(df_year),counties = counties,xlim_range = xlim_range,ylim_range = ylim_range)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 1,byrow = T)
+label_top <- 'Comparison of median earnings of males and females per county in 2008 and 2018.'
+label_bottom <- 'The slope of the solid black diagonal line is 1 and the intercept is 0.'
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label_top,gp = grid::gpar(fontsize = 25)),
+                         bottom = grid::textGrob(label = label_bottom,gp = grid::gpar(fontsize = 25))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-05-09-childcare-costs.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Two scatter plots with density curve.
+
+## Type of data : Median earnings expressed in 2018 dollars for males and females aged 16 years and over in 2008 and 2018 respectively for a total of 3144 US counties.
+
+## Reason for including the chart :  By drawing a diagonal line with a slope of 1 and an intercept of 0 on a scatterplot of median males and females earnings per county with female earnings on the x-axis and male earnings on the y-axis, it is easy to show that counties below the diagonal line are those where women have higher earnings and above are those where men have higher earnings.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-09
+```
+
+# `r referencetxt`
+
+- https://ggrepel.slowkow.com/articles/examples.html
