@@ -1,0 +1,224 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Tornados
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-16
+
+# html output : https://saecanet.com/tidytuesday-2023-05-16-tornados.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+tornados <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-16/tornados.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(tornados)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-16' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable()
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+tornados %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- list()
+library(plotly)
+tornados$yymmdd <- paste0(tornados$yr,'-',tornados$mo,'-',tornados$dy) %>% as.Date()
+usastates <- map_data("state")
+(daterange <- range(tornados$yymmdd) %>% format('%Y/%m/%d') %>% paste0(collapse = ' - '))
+```
+
+### Frequency by month
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_freq_by_month <- table(tornados$mo) %>% data.frame()
+df_freq_by_month$month <- df_freq_by_month$Var1 %>% month.abb[.] %>% factor(x = .,levels = month.abb)
+g[[1]] <- 
+  ggplot(data = df_freq_by_month,mapping = aes(x = month,y = Freq,fill = Freq)) + 
+  geom_bar(stat = 'identity') + 
+  labs(title = 'Frequency by month') + 
+  theme_minimal() +
+  xlab('') + 
+  ylab('') +
+  theme(legend.position = 'none') + 
+  scale_fill_gradient2(low = 'yellow',
+                       mid = 'orange',
+                       high = 'red',
+                       midpoint = median(df_freq_by_month$Freq))
+ggplotly(g[[1]])
+```
+
+### Frequency by state
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Find out the abbreviation of all US states.
+library(rvest)
+(usa_state_abb <- read_html(x = 'https://www.mercercountypa.gov/dps/state_fips_code_listing.htm') %>% html_nodes('table') %>% {.[[1]]} %>% html_table() %>% data.frame() %>% {.[-1,c(1,4)]} %>% t %>% as.vector() %>% sort() %>% {.[.==''] <- NA;.} %>% na.omit())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+setdiff(usa_state_abb,tornados$st %>% unique())
+# AS(AMERICAN SAMOA) and GU(GUAM) are not necessary.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+setdiff(tornados$st %>% unique(),usa_state_abb)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(maps)
+map_data("state")$region %>% unique() %>% sort()
+# No HAWAII,ALASKA,DC,PUERTO RICO,VIRGIN ISLANDS,GUAM
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check the states provided in the package {usmap}.
+library(usmap)
+setdiff(tornados$st %>% unique() %>% sort(),usmapdata::us_map()$abb %>% unique())
+# No PUERTO RICO,VIRGIN ISLANDS
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+setdiff(usmapdata::us_map()$abb %>% unique(),tornados$st %>% unique() %>% sort())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+paste0(tornados$st,tornados$stf) %>% unique() %>% gsub('[0-9]{2}$','',.) %>% table() %>% {.[.!=1]}
+# TX(48,TEXAS) and ID(16,IDAHO) have typos in the abbreviation.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# TX
+(tx <- {tornados$st=='TX' & tornados$stf!=48} %>% which())
+tornados[tx,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# ID
+(id <- {tornados$st=='ID' & tornados$stf!=16} %>% which())
+tornados[id,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Probably a typo in stf, but decide to delete the relevant line without modifying stf.
+tornados <- tornados[-c(tx,id),]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_freq_by_stf <- aggregate(x = tornados$om,by = list(tornados$stf,tornados$st),length) %>% {.[order(.[,1]),]}
+colnames(df_freq_by_stf) <- c('fips','abbr','Freq')
+df_freq_by_stf$fips <- df_freq_by_stf$fips %>% formatC(width = 2,flag = '0')
+df_freq_by_stf
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_freq_by_stf$abbr %>% duplicated() %>% sum()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(centroid_labels <- usmapdata::centroid_labels("states"))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_freq_by_state <- inner_join(df_freq_by_stf,centroid_labels,by = c("fips",'abbr')))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(no_map <- full_join(df_freq_by_stf,centroid_labels,by = c("fips",'abbr')) %>% {.[is.na(.$x),]})
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g[[2]] <- 
+  plot_usmap(data = df_freq_by_state[,c("fips","Freq")],
+             regions = "state",
+             values = "Freq") +
+  geom_text(data = df_freq_by_state, 
+            mapping = aes(x = x,
+                          y = y,
+                          label = abbr),
+            color = "black",
+            size = 5) +
+  labs(title = "Frequency by state",
+       subtitle = paste0(no_map$abbr,':',no_map$Freq,collapse = ' , '),
+       fill = "Freq") + 
+  scale_fill_gradient2(low = 'yellow',mid = 'orange',high = 'red',midpoint = mean(df_freq_by_state$Freq))
+ggplotly(g[[2]])
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 1,byrow = T)
+label_top <- paste0('Frequency of tornados in the United States\n',daterange)
+label_bottom <- nrow(tornados) %>% format(big.mark = ',') %>% paste0('N = ',.)
+#
+g[[1]] <- 
+  g[[1]] + 
+  theme(plot.title = element_text(size = 17),
+        axis.text = element_text(size = 15)) 
+g[[2]] <- 
+  g[[2]] + 
+  theme(plot.title = element_text(size = 17),
+        plot.subtitle = element_text(size = 15),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 14)) 
+#
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label_top,gp = grid::gpar(fontsize = 25)),
+                         bottom = grid::textGrob(label = label_bottom,gp = grid::gpar(fontsize = 20))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-05-16-tornados.png"),width = 1800,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : One bar chart(left side) and one US state choropleth map(right side).
+
+## Type of data : Frequency of tornadoes in the USA from 3 January 1950 to 30 December 2022, by month(left side) and by state(right side).
+
+## Reason for including the chart : A bar chart showing the monthly frequency of tornadoes with the name of the month on the x-axis and the frequency of occurrence on the y-axis allows the bias of the frequency of occurrence by month to be checked. The US state choropleth map can then be used to check the frequency of occurrence by region within the US.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-16
+```
+
+# `r referencetxt`
+
+- https://remiller1450.github.io/s230s19/Intro_maps.html
+- https://stackoverflow.com/questions/70028644/how-do-i-use-ggplot2-to-draw-a-us-map-that-uses-two-colors-to-fill-in-specific-s
+- https://stackoverflow.com/questions/73627579/how-to-add-state-abbreviations-to-a-map-in-r
+- https://www.mercercountypa.gov/dps/state_fips_code_listing.htm
