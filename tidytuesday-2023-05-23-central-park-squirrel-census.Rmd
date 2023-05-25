@@ -1,0 +1,169 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Central Park Squirrel Census
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-23
+
+# html output : https://saecanet.com/tidytuesday-2023-05-23-central-park-squirrel-census.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+squirrel_data <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-23/squirrel_data.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(squirrel_data)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-23' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable()
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+squirrel_data %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Plot(leaflet)
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- squirrel_data
+df$Date <- df$Date %>% gsub('^([0-9]{2})([0-9]{2})([0-9]{4})$','\\3-\\1-\\2',.) %>% as.Date()
+df$`Primary Fur Color` %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df$primary_fur_color_HEX <- df$`Primary Fur Color`
+df$primary_fur_color_HEX <-
+  df$primary_fur_color_HEX %>% {.[is.na(.)] <- 'NA';.}
+df$primary_fur_color_HEX <- 
+  df$primary_fur_color_HEX %>% 
+  gsub('Gray','#808080',.) %>% 
+  gsub('Cinnamon','#C58917',.) %>% 
+  gsub('Black','#000000',.) %>% 
+  gsub('NA','#FFFFFF',.)
+df$primary_fur_color_HEX %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df$popup <- 
+  paste(sep = "<br/>",
+        paste('<b>Hectare:</b>',df$Hectare),
+        paste('<b>Shift:</b>',df$Shift),
+        paste('<b>Date:</b>',df$Date),
+        paste('<b>Age:</b>',df$Age),
+        paste('<b>Primary Fur Color:</b>',df$`Primary Fur Color`),
+        paste('<b>Location:</b>',df$Location))
+library(leaflet)
+m <- leaflet(df,width = '100%',height = 850) %>% addTiles() 
+m %>%
+  addCircleMarkers(lng = ~ X,
+                   lat = ~ Y,
+                   popup = ~ popup, 
+                   color = ~ primary_fur_color_HEX,
+                   fillOpacity = 1,
+                   stroke = F)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df$Hectare %>% unique() %>% sort()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+pattern <- '^([0-9]{2})([A-Z])$'
+df$Hectare_x <- df$Hectare %>% gsub(pattern,'\\1',.)
+df$Hectare_y <- df$Hectare %>% gsub(pattern,'\\2',.)
+df$Eating %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_eating <- aggregate(x = df$Eating,by = list(df$Hectare_x,df$Hectare_y),FUN = sum))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_eating$x %>% table()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_eating$Group.1 <- df_eating$Group.1 %>% factor(levels = df_eating$Group.1 %>% unique() %>% sort())
+df_eating$Group.2 <- df_eating$Group.2 %>% factor(levels = df_eating$Group.2 %>% unique() %>% sort())
+subtitle <- df$Date %>% range() %>% format('%Y/%m/%d') %>% paste0(collapse = ' - ')
+g0 <- 
+  df_eating %>% 
+  ggplot(mapping = aes(y = Group.1,x = Group.2)) + 
+  geom_tile(mapping = aes(fill = x)) + 
+  geom_text(mapping = aes(label = x),size = 7) +
+  scale_fill_gradient2(low = 'white',
+                       mid = '#f5deb3',
+                       high = 'red',
+                       midpoint = median(df_eating$x)) +
+  theme_minimal() + 
+  theme(axis.title = element_blank(),
+        legend.position = 'top',axis.text = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18),
+        plot.title = element_text(hjust = 0.5,size = 25),
+        plot.subtitle = element_text(hjust = 0.5,size = 20),
+        plot.caption = element_text(size = 18)) +
+  guides(fill = guide_colourbar(title = "Number of squirrels seen eating")) + 
+  labs(title = 'Where in Central Park are squirrels eating?',
+       subtitle = subtitle,
+       caption = paste0('n = ',nrow(df),',Total number of squirrels seen eating = ',sum(df$Eating==F)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+setwd('D:/tidytuesday/');getwd()
+fontawesome::fa_png(name = 'fish',fill = 'blue')
+df_img <- 
+  data.frame(Group.1 = '26',
+             Group.2 = c('C','D','E','F','G','H'),
+             x  = NA,
+             img = 'D:/tidytuesday/fish.png')
+g <- 
+  g0 + 
+  ggimage::geom_image(mapping = aes(x = Group.2,y = Group.1,image = img),
+                      data = df_img,
+                      size = 0.05)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-05-23-central-park-squirrel-census.png"),width = 1000,height = 1000)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Tiled heat map representing a grid of New York City's Central Park divided into nine sections from A to I in the west to east direction and from 1 to 42 in the south to north direction.
+
+## Type of data : Number of squirrels during meals time sighted in each of the 378 grids from 6 to 20 October 2018.
+
+## Reason for including the chart : A heatmap of the plots where squirrels are seen during mealtimes and those where they are not provides the basis for estimating the characteristics of each plot in Central Park.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-23
+```
+
+# `r referencetxt`
+
+- https://qiita.com/Ringa_hyj/items/d17fdb0f8861e02cd621
+- https://stackoverflow.com/questions/45146315/ggplot-add-text-inside-each-tile-of-geom-tile
