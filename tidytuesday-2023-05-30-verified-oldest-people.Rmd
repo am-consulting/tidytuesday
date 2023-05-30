@@ -1,0 +1,226 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Verified Oldest People
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-30
+
+# html output : https://saecanet.com/tidytuesday-2023-05-30-verified-oldest-people.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+centenarians <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-30/centenarians.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(centenarians)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-30' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable()
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+centenarians %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Reasons for NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+centenarians$death_date %>% is.na(.) %>% centenarians[.,]
+# Because they are all alive.
+
+# As it is not known whether the 12 persons whose date of death is N/A are still alive at the present time, the ages in the data are used as they are.
+```
+
+## DT
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+centenarians %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Analysis of data from the top 100 men and women in terms of longevity each.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- centenarians
+g <- list()
+```
+
+### Boxplot for comparison of basic statistics for age by sex.
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='hide'}
+g[[1]] <- 
+   ggplot(mapping = aes(x = gender,y = age,col = gender),data = df) + 
+   geom_boxplot(outlier.shape = NA) + 
+   geom_jitter(mapping = aes(color = gender,shape = gender)) +
+   theme_minimal() + 
+   theme(legend.position = 'none',
+         axis.title = element_blank(),
+         plot.title = element_text(hjust = 0.5,size = 20),
+         plot.subtitle = element_text(face = 'italic',size = 15),
+         axis.text = element_text(size = 12)) + 
+   scale_y_continuous(breaks = scales::pretty_breaks(10)) + 
+   labs(title = 'Comparison of basic statistics for age by sex',
+        subtitle = 'Female win !')
+plotly::ggplotly(p = g[[1]])
+```
+
+### Bar chart for comparison of numbers of people with longevity by gender and by country.
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='hide'}
+by_place_and_gender <- aggregate(x = df$age,by = list(df$place_of_death_or_residence,df$gender),FUN = length)
+by_place_and_gender$Group.1 <- by_place_and_gender$Group.1 %>% factor(levels = unique(.) %>% sort(.) %>% rev(.))
+# by_place_and_gender$x %>% sum # for check
+g[[2]] <- 
+    ggplot() + 
+    geom_bar(mapping = aes(x = Group.1,y = x,fill = Group.2),data = by_place_and_gender,stat = 'identity') + 
+    facet_wrap(facets = . ~ Group.2,ncol = 2) + 
+    coord_flip() + 
+    theme_minimal() +   
+    theme(legend.position = 'none',
+          axis.title = element_blank(),
+          plot.title = element_text(hjust = 0.5,size = 20),
+          plot.subtitle = element_text(face = 'italic',size = 15),
+          strip.text = element_text(size = 12),
+          axis.text = element_text(size = 12)) + 
+    labs(title = 'Comparison of numbers of people with longevity by gender and by country',
+         subtitle = 'My country, Japan, is second only to the United States in terms of both men and women,\n but has approximately 40% of the population of the United States in terms of both men and women.') + 
+    scale_y_continuous(breaks = scales::pretty_breaks(10))
+plotly::ggplotly(p = g[[2]])
+# https://www.statista.com/statistics/737923/us-population-by-gender/
+# https://www.statista.com/statistics/612246/japan-population-breakdown-total-gender/
+```
+
+### Boxplot for comparison of basic statistics for age by sex and country.
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='hide'}
+df$place_of_death_or_residence <- 
+  df$place_of_death_or_residence %>% factor(levels = unique(.) %>% sort(.) %>% rev(.))
+g[[3]] <- 
+    ggplot() + 
+    geom_boxplot(mapping = aes(x = place_of_death_or_residence ,y = age,fill = gender),
+                 data = df) + 
+    facet_wrap(facets = . ~ gender,ncol = 2) + 
+    coord_flip() + 
+    theme_minimal() + 
+    theme(legend.position = 'none',
+          axis.title = element_blank(),
+          plot.title = element_text(hjust = 0.5,size = 20),
+          plot.subtitle = element_text(face = 'italic',size = 15),
+          strip.text = element_text(size = 12),
+          axis.text = element_text(size = 12)) + 
+    scale_y_continuous(breaks = scales::pretty_breaks(10)) + 
+    labs(title = 'Comparison of basic statistics for age by sex and country',
+         subtitle = 'Félicitations à la Parisienne !')
+plotly::ggplotly(p = g[[3]])
+```
+
+### Age, sex and nationality of 12 living longevity.
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='hide'}
+df_alive <- df[df$still_alive=="alive",]
+df_alive$name <- 
+  df_alive$name %>% factor(levels = df_alive$name[df_alive$age %>% order(decreasing = F)])
+# nrow(df_alive)
+# devtools::install_github('jimjam-slam/ggflags')
+# library(ggflags)
+library(rvest)
+countrycodes <- read_html('https://www.iban.com/country-codes') %>% html_table() %>% data.frame(check.names = F)
+df_alive$place_of_death_or_residence <- 
+  df_alive$place_of_death_or_residence %>% 
+  gsub('^United States$','United States of America',.)
+df_alive$countrycode <- df_alive$place_of_death_or_residence %>% 
+  sapply(FUN = function(x)grep(paste0('^',x),countrycodes$Country) %>% 
+           countrycodes$`Alpha-2 code`[.])
+ymin <- 110
+g[[4]] <- 
+    ggplot() +
+    geom_bar(mapping = aes(x = name,y = age,fill = gender),stat = 'identity',
+             data = df_alive) + 
+    ggimage::geom_flag(mapping = aes(x = name,y = ymin,image = countrycode),
+                       data = df_alive,
+                       size = 0.1,
+                       by = "height") + 
+    coord_flip() +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          legend.title = element_blank(),
+          plot.title = element_text(hjust = 0.5,size = 20),
+          plot.subtitle = element_text(face = 'italic',size = 15),
+          axis.text = element_text(size = 12),
+          legend.text = element_text(size = 17)) +
+    scale_y_continuous(limits = c(ymin,max(df_alive$age)),oob = scales::rescale_none,breaks = scales::pretty_breaks(5)) + 
+    labs(title = 'Age, sex and nationality of 12 living longevity.',
+         subtitle = 'Fusa Tatsumi(巽フサ), the second longest living woman, and Tomiko Itooka(糸岡富子), the fourth, were both born\n in Osaka, Japan. Is there some secret of longevity in Osaka? By the way, Osaka people love TAKOYAKI(octopus balls).')
+plotly::ggplotly(p = g[[4]])
+# https://ja.wikipedia.org/wiki/%E5%B7%BD%E3%83%95%E3%82%B5
+# https://ja.wikipedia.org/wiki/%E7%B3%B8%E5%B2%A1%E5%AF%8C%E5%AD%90
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- c(1,4,2,3) %>% matrix(nrow = 2,byrow = T)
+label_top <- 
+  paste0('Analysis of data from the top 100 men and women in terms of longevity each.\n','n(male) = ',sum(df$gender=='male'),', n(female) = ',sum(df$gender=='female'))
+label_bottom <- NULL
+#
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label_top,
+                                              gp = grid::gpar(fontsize = 20)),
+                         bottom = grid::textGrob(label = label_bottom,
+                                                 gp = grid::gpar(fontsize = 20))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-05-30-verified-oldest-people.png"),width = 1900,height = 1010)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Top left is a boxplot showing basic statistics for age by gender. Top right is a bar chart showing the names, ages, gender, and nationalities of the 12 still living. The lower left bar chart shows the number of people with longevity by nationality and gender. And the lower right boxplot shows the basic statistics for age by nationality and sex.
+
+## Type of data : Data on 100 men and 100 women each who were long-lived or are long-lived, including name, date of birth, date of death, place of death, place of residence if alive, and whether they are already dead or alive.
+
+## Reason for including the chart : The boxplots provide an easy way to understand whether there are differences in the age of the top 100 men and women in longevity by gender or nationality.
+
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-05-30
+```
+
+# `r referencetxt`
+
+- https://stackoverflow.com/questions/10365167/geom-bar-bars-not-displaying-when-specifying-ylim
+- https://yulab-smu.top/pkgdocs/ggimage.html
+- https://github.com/jimjam-slam/ggflags
+- https://github.com/jimjam-slam/ggflags/blob/master/inst/demo/flags.pdf
+- https://rpubs.com/chidungkt/921307
+- https://www.statista.com/statistics/737923/us-population-by-gender/
+- https://www.statista.com/statistics/612246/japan-population-breakdown-total-gender/
