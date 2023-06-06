@@ -1,0 +1,138 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Energy Data
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-06
+
+# html output : https://saecanet.com/tidytuesday-2023-06-06-energy-data.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+owid_energy <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-06/owid-energy.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(owid_energy)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-06' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+owid_energy %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Check component of renewables
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- owid_energy
+col_renewables <- 
+  c("biofuel_share_energy","hydro_share_energy","solar_share_energy","wind_share_energy","other_renewables_share_energy")
+df_renewables <- df[,col_renewables]
+row_no_zero <- apply(df_renewables,MARGIN = 1,FUN = function(x)round(prod(x))) %>% {.!=0} %>% which()
+df_renewables <- add_column(.data = df_renewables,Total = apply(df_renewables,MARGIN = 1,FUN = function(x)sum(x,na.rm = T)),.before = 1)
+df_check_component_of_renewables <- cbind(df[,c("country","year","renewables_share_energy")],df_renewables) %>% {.[row_no_zero,]}
+df_check_component_of_renewables %>% {rbind(head(.,20),tail(.,20))}
+# The components of renewable energy are determined to be biofuel, hydro, solar, wind and other_renewables.
+```
+
+## Check country code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+df_countrycode <- 'https://www.iban.com/country-codes' %>% read_html() %>% html_table() %>% {.[[1]] %>% data.frame()}
+df_countrycode %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Extract data for each G7 country.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_g7 <- grep('CAN|JPN|ITA|DEU|USA|FRA|GBR',df$iso_code) %>% df[.,]
+df_g7 <- df_g7$renewables_share_energy %>% {!is.na(.)} %>% df_g7[.,]
+```
+
+## Extract data on renewable energy.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_g7_renewables <- df_g7[,c("country","year","renewables_share_energy",col_renewables)]
+df_g7_renewables_history <-
+  c(seq(min(df_g7_renewables$year),max(df_g7_renewables$year),by = 20),max(df_g7_renewables$year)) %>% 
+  paste0(collapse = '|') %>% 
+  grep(df_g7_renewables$year) %>% 
+  df_g7_renewables[.,]
+```
+
+## Plot
+
+```{r energydata,eval=TRUE,echo=TRUE,results='hold'}
+for(yyyy in unique(df_g7_renewables_history$year)){
+  buf0 <- (df_g7_renewables_history$year==yyyy) %>% df_g7_renewables_history[.,]
+  buf0$country <- paste(rank(-buf0$renewables_share_energy),buf0$country)
+  if(yyyy==min(df_g7_renewables_history$year)){df <- buf0}else{df <- rbind(df,buf0)}
+}
+tidydf_df <-
+  df[,c("country","year",col_renewables)] %>% 
+  gather(key = 'key',value = 'value',colnames(.)[-c(1,2)])
+tidydf_df$key <- tidydf_df$key %>% factor(levels = rev(col_renewables))
+# NA in the data is determined to be zero.
+tidydf_df[is.na(tidydf_df)] <- 0
+g <-
+    ggplot(data = tidydf_df_g7_renewables,mapping = aes(x = country,y = value,fill = key)) + 
+    geom_bar(stat = 'identity',position = 'stack',col = 'white') + 
+    theme_minimal() + 
+    coord_flip() + 
+    theme(legend.title = element_blank(),
+          axis.title = element_blank(),
+          plot.title = element_text(size = 18,hjust = 0.5),
+          plot.subtitle = element_text(size = 17,hjust = 0.5,face = 'italic'),
+          axis.text = element_text(size = 17),
+          strip.text = element_text(size = 17),
+          legend.text = element_text(size = 16)) + 
+    scale_y_continuous(breaks = scales::pretty_breaks(5)) + 
+    labs(title = 'The transition of the share(%) of renewable energy in the G7 countries.',
+         subtitle = 'Canadians, you are the only people who can condemn, preach and lead the other G7 members\n on renewable energy.') +
+    facet_wrap(.~year,scales = 'free_y')
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-06-06-energy-data.png"),width = 1200,height = 900)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Bar chart of the share of electricity generation that comes from renewables in G7 countries in 1965, 1985, 2005, and 2021.
+
+## Type of data : the share of electricity generation that comes from biofuel, hydro, solar, wind, and other renewables in G7 countries in 1965, 1985, 2005, and 2021.
+
+## Reason for including the chart : To identify the amount of renewable energy characteristics of each of the G7 countries, a group of economically influential and mature democracies, by reviewing the evolution of their share of renewable energy.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-06
+```
+
+# `r referencetxt`
+
+- https://www.iban.com/country-codes
