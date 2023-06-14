@@ -1,0 +1,180 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# SAFI survey data
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-13
+
+# html output : https://saecanet.com/tidytuesday-2023-06-13-SAFI-survey-data.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+safi_data <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-13/safi_data.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(safi_data)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-13' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+safi_data %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## The percentage of households that own various items is examined for each village.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Vectorize the items held by each household.
+df <- safi_data
+items_owned_list <- df$items_owned %>% sapply(FUN = function(x)strsplit(x,split = ';',fixed=T))
+items_owned_list[[1]]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+Reduce(function(x,y)intersect(x,y),items_owned_list)
+# No item is commonly owned by all households.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+lapply(items_owned_list,FUN = function(x)sum(duplicated(x))) %>% unlist() %>% sum()
+# There are no duplicate items in a single household.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# The number of households that own each item and its percentage of the total number of households.
+item <- Reduce(function(x,y)c(x,y),items_owned_list)
+df_items <- table(item) %>% data.frame()
+df_items$`Ratio(%)` <- round(df_items$Freq/nrow(df)*100)
+(df_items <- df_items$Freq %>% order(decreasing = T) %>% df_items[.,])
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Color for each item used in the bar chart.
+(df_barcolor <- data.frame(Item = item %>% unique() %>% sort(),color = randomcoloR::distinctColorPalette(item %>% unique() %>% length())))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# The number of households that own each item and its ratio to the total number of households in each village.
+(villages <- df$village %>% unique())
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# function for plot
+fun_plot <- function(iii,plotsubtitle){
+  items_owned_list_by_village <- (df$village==villages[iii]) %>% which(.) %>% items_owned_list[.]
+  number_of_households <- length(items_owned_list_by_village)
+  df_table <- items_owned_list_by_village %>%  Reduce(function(x,y)c(x,y),.) %>% table(.) %>% data.frame()
+  df_table$`Ratio(%)` <- round(df_table$Freq/number_of_households*100)
+  df_table <- df_table$`Ratio(%)` %>% order(decreasing = T) %>% df_table[.,]
+  colnames(df_table)[1] <- 'Item'
+  df_table$Item <- df_table$Item %>% factor(levels = df_table$Item)
+  df_table <- plyr::join(df_table,df_barcolor)
+  plottitle <- paste0(villages[iii],'\nNumber of households = ',number_of_households)
+  g <- 
+    ggplot(data = df_table,mapping = aes(x = Item,y = `Ratio(%)`,fill = Item)) + 
+    geom_bar(stat = 'identity') + 
+    theme_minimal() + 
+    coord_flip() + 
+    labs(title = plottitle,subtitle = plotsubtitle) +
+    theme(legend.position = 'none',
+          axis.title.y = element_blank(),
+          plot.title = element_text(hjust = 0.5,
+                                    size = 16),
+          plot.subtitle = element_text(hjust = 0.5,
+                                       face = 'italic',
+                                       size = 15),
+          axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 14)) + 
+    scale_fill_manual(values = df_table$color)
+  return(list(g=g,df_table=df_table))
+}
+g <- list()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# For each item, identify the village to which the household that owns it belongs.
+items <- item %>% unique()
+items %>% sapply(FUN = function(x)unique(df$village[grep(x,df$items_owned)]))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+tmp <- fun_plot(iii = 1,plotsubtitle = 'The only village with more households owning cow plough\n than households owning mobile phone.')
+tmp$df_table
+g[[1]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+tmp <- fun_plot(iii = 2,plotsubtitle = 'This is the only village where computer-owning\n households exist.')
+tmp$df_table
+g[[2]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+tmp <- fun_plot(iii = 3,plotsubtitle = 'The village with the highest household cell\n phone penetration among the three villages.')
+tmp$df_table
+g[[3]] <- tmp$g
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- c(1,2,3) %>% matrix(nrow = 1)
+label_top <- 'Household penetration rate of various items in three African villages.'
+label_bottom <- NULL
+#
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 3,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label_top,
+                                              gp = grid::gpar(fontsize = 20)),
+                         bottom = grid::textGrob(label = label_bottom,
+                                                 gp = grid::gpar(fontsize = 20))) %>%
+  ggpubr::as_ggplot()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-06-13-SAFI-survey-data.png"),width = 1200,height = 900)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Three bar charts.
+
+## Type of data : Household penetration rate of various items in three African villages.
+
+## Reason for including the chart : By identifying trends in the items owned by each of the three village households, the characteristics of each village can be confirmed.
+
+## Link to data or source : # https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-13
+```
+
+# `r referencetxt`
+
+- https://stackoverflow.com/questions/15282580/how-to-generate-a-number-of-most-distinctive-colors-in-r
+- https://stackoverflow.com/questions/9563711/r-color-palettes-for-many-data-classes/41230685#41230685
