@@ -1,0 +1,158 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# UFO Sightings Redux
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-20
+
+# html output : https://saecanet.com/tidytuesday-2023-06-20-UFO-Sightings-Redux.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+ufo_sightings <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-20/ufo_sightings.csv')
+places <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-20/places.csv')
+day_parts_map <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-20/day_parts_map.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(ufo_sightings)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(places)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(day_parts_map)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-20' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[2]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[3]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+ufo_sightings %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+places %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+day_parts_map %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Range of date
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(daterange <- ufo_sightings$reported_date_time_utc %>% range())
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- plyr::join(ufo_sightings,places,type = 'full')
+world_data <- map_data(map = 'world')
+df_top_secret <- 
+  data.frame(latitude = c(41.902168,37.234332396,51.5151),
+             longitude = c(12.453937,-115.80666344,-0.121),
+             secret = c('Vatican','Area51','Freemasonry'))
+df$era <- df$reported_date_time_utc %>% year() %>% {(floor((.-min(.))/20))*20 + min(.)} %>% paste0(.,' ~')
+# df$era %>% unique()
+library(ggrepel)
+g <- 
+  ggplot() +
+  geom_map(data = world_data, 
+           map = world_data,
+           mapping = aes(x = long,y = lat,map_id = region),
+           color = "black",
+           fill = "white",
+           linewidth = 0.1) + 
+  theme_minimal() +
+  geom_point(data = df,
+             mapping = aes(x = longitude,y = latitude,col = era),
+             size = 4) + 
+  geom_label_repel(data = df_top_secret,
+                   mapping = aes(x = longitude,y = latitude,label = secret),
+                   size = 8,
+                   fontface = "bold",
+                   segment.color = "red",
+                   color = 'red',
+                   segment.size = 1,
+                   min.segment.length = 1,
+                   nudge_x = 20,
+                   nudge_y = 20) + 
+  coord_fixed() + 
+  theme(axis.title = element_blank(),
+        axis.text = element_text(size = 15),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 15),
+        plot.title = element_text(size = 20,hjust = 0.5),
+        plot.subtitle = element_text(face = 'italic',hjust = 0.5,size = 18),
+        plot.caption = element_text(size = 17)) + 
+  labs(title = 'UFO Sighting Locations',
+       subtitle = 'Is it my imagination that there appears to be a connection\n between the three facilities and the number of sightings?',
+       caption = daterange %>% format('%Y-%m-%d %H:%M:%S %Z') %>% paste0(collapse = ' ~ ')) +
+  guides(colour = guide_legend(override.aes = list(size=10))) + 
+  ggalt::geom_encircle(mapping = aes(x = longitude,y = latitude,
+                                     s_shape = 0.5, 
+                                     expand = 0.1),
+                       data = df_top_secret,
+                       fill = 'red',
+                       alpha = 0.2) # +
+  # geom_polygon(mapping = aes(x = longitude,y = latitude),
+  #              data = df_top_secret,
+  #              fill = 'red',
+  #              alpha = 0.5)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-06-20-UFO-Sightings-Redux.png"),width = 1200,height = 650)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Scatterplot on the world map.
+
+## Type of data : UFO sightings from December 29, 1925 to May 18, 2023.
+
+## Reason for including the chart : By plotting UFO sighting locations on a world map, it is possible to see differences in the frequency of UFO appearances by region or the distribution of conspiracy theorist habitats.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-20
+```
+
+# `r referencetxt`
+
+- https://latitude.to/articles-by-country/us/united-states/120/area-51
+- https://www.latlong.net/place/st-peter-s-basilica-rome-vatican-city-23396.html
+- https://latitude.to/articles-by-country/gb/united-kingdom/11589/freemasons-hall-london
