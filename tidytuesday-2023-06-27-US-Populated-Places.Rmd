@@ -1,0 +1,189 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# US Populated Places
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-27
+
+# html output : https://saecanet.com/tidytuesday-2023-06-27-US-Populated-Places.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+us_place_names <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-27/us_place_names.csv')
+us_place_history <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-06-27/us_place_history.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(us_place_names)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(us_place_history)
+```
+
+## Check original data
+
+```{r eval=FALSE,echo=TRUE,results='hold'}
+options(timeout = 120)
+url <- "https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames/DomesticNames/DomesticNames_National_Text.zip"
+destfile <- url %>% gsub('^.+/([^/]+$)','\\1',.)
+setwd('D:/tidytuesday/')
+download.file(url = url,destfile = destfile)
+(buf0 <- unzip(destfile))
+df0 <-  read_delim(buf0[1], "|")
+write.csv(x = df0,file = 'DomesticNames_National_Text.csv',quote = T,na = '',fileEncoding = 'UTF-8',row.names = F)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+setwd('D:/tidytuesday/')
+df <- read.csv(file = 'DomesticNames_National_Text.csv',check.names = F)
+df$feature_class %>% unique()
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-27' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[2]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+us_place_names %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+us_place_history %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Description of feature class
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+'https://www.usgs.gov/us-board-on-geographic-names/gnis-domestic-names-feature-classes' %>% read_html() %>% html_nodes('table.usa-table--striped') %>% html_table(header = T) %>% data.frame() %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+- **Populated Place**:Place or area with clustered or scattered buildings and a permanent human population (city,settlement, town, village). A populated place is usually not incorporated and by definition has no legal boundaries. However, a populated place may have a corresponding "civil" record,the legal boundaries of which may or may not coincide with the perceived populated place.Distinct from Census and Civil classes.
+- Source:https://www.usgs.gov/us-board-on-geographic-names/gnis-domestic-names-feature-classes
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Check for communities that have been entered into the system more than once.
+df <- us_place_names
+df <- (!is.na(df$prim_lat_dec) & !is.na(df$prim_long_dec) & !is.na(df$date_created)) %>% df[.,]
+glimpse(df)
+df$forcheckduplicated <- paste0(df$prim_lat_dec,df$prim_long_dec,df$state_name,df$county_name)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# example 1
+example <- df$forcheckduplicated %>% duplicated() %>% which() %>% tail(1)
+(df$forcheckduplicated[example]==df$forcheckduplicated) %>% df[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# example 2
+example <- df$forcheckduplicated %>% duplicated() %>% which() %>% tail(2) %>% head(1)
+(df$forcheckduplicated[example]==df$forcheckduplicated) %>% df[.,]
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df$year <- df$date_created %>% year()
+df$year %>% table() %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+AllCounty <- map_data("county")
+MainStates <- map_data("state")
+xrange <- MainStates$long %>% range()
+yrange <- MainStates$lat %>% range()
+g0 <- 
+  ggplot() + 
+  geom_polygon(data = AllCounty,
+               mapping = aes(x = long,y = lat,group = group),
+               color = "darkblue", 
+               fill = "white",
+               linewidth = .1 ) +
+  geom_polygon(data = MainStates,
+               mapping = aes(x = long,y = lat,group = group),
+               color = "black",
+               fill = "white",
+               linewidth = 1,
+               alpha = .3) + 
+  theme_minimal()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df$year %>% unique() %>% sort()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+era_s <- df$year %>% range() %>% {seq(.[1],.[2],by = 13)}
+era_e <- tail(era_s-1,-1) %>% c(.,max(df$year))
+df$era <- 
+  df$year %>% 
+  {ifelse(test = era_s[1]<=. & .<=era_e[1],
+          yes = paste0(era_s[1],'-',era_e[1]),
+          no = ifelse(test = era_s[2]<=. & .<=era_e[2],
+                      yes = paste0(era_s[2],'-',era_e[2]),
+                      no = ifelse(test = era_s[3]<=. & .<=era_e[3],
+                                  yes = paste0(era_s[3],'-',era_e[3]),
+                                  no = paste0(era_s[4],'-',era_e[4]))))}
+g <- 
+  g0 + geom_point(mapping = aes(x = prim_long_dec,y = prim_lat_dec),
+                 data = df,
+                 size = 1,
+                 col = 'red') + 
+  ylim(yrange) + 
+  facet_wrap(facets = . ~ era,nrow = 2) + 
+  theme(axis.title = element_blank(),
+        axis.text = element_text(size = 15),
+        strip.text = element_text(size = 16),
+        plot.title = element_text(hjust = 0.5,size = 17)) + 
+  labs(title = 'The community location entered into GNIS with the class name "Populated Place".(U.S. mainland only)') + 
+  coord_fixed() + 
+  scale_x_continuous(breaks = scales::pretty_breaks(10),limits = xrange)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-06-27-US-Populated-Places.png"),width = 1000,height = 600)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Four scatterplots drawn on a map of the U.S. mainland.
+
+## Type of data : Location of communities entered as "Populated Place" in the GNIS for each of the four age groups.
+
+## Reason for including the chart : To see the chronological evolution of the location and number of communities entered as "Populated Place" in GNIS.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-06-27
+```
+
+# `r referencetxt`
+
+- https://remiller1450.github.io/s230s19/Intro_maps.html
+- https://edits.nationalmap.gov/apps/gaz-domestic/public/search/names
+- https://www.usgs.gov/us-board-on-geographic-names/gnis-domestic-names-feature-classes
