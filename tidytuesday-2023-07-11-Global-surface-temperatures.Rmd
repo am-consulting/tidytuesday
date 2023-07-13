@@ -1,0 +1,198 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Global surface temperatures
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-11
+
+# html output : https://saecanet.com/tidytuesday-2023-07-11-Global-surface-temperatures.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+global_temps <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-11/global_temps.csv')
+nh_temps <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-11/nh_temps.csv')
+sh_temps <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-11/sh_temps.csv')
+zonann_temps <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-11/zonann_temps.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(global_temps)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(nh_temps)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(sh_temps)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(zonann_temps)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-11' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[2]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[3]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[4]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+global_temps %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+nh_temps %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+sh_temps %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+zonann_temps %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Check to see if the time series ranges are the same.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+c(global_temps$Year==nh_temps$Year,global_temps$Year==sh_temps$Year) %>% all()
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+gg <- list()
+```
+
+### Time Series Charts and Regression Lines
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+fun_convert <- function(df0,plottitle){
+  temperature_anomaly <- match(month.abb,colnames(df0)) %>% df0[,.] %>% t %>% c()
+  Date <- df0$Year[1] %>% paste0('-1-1') %>% as.Date() %>% seq(from = .,by = '+1 month',
+                                                               length.out = length(temperature_anomaly))
+  df <- data.frame(Date,temperature_anomaly)
+  g <- 
+    ggplot(data = df,mapping = aes(x = Date,y = temperature_anomaly)) + 
+    geom_bar(mapping = aes(fill = temperature_anomaly > 0),stat = 'identity') +
+    geom_smooth(method = 'lm') + 
+    scale_fill_manual(values = c('TRUE' = 'red','FALSE' = 'blue')) + 
+    theme_minimal() + 
+    theme(legend.position = 'none',
+          axis.title = element_blank()) + 
+    ggpubr::stat_regline_equation(label.y = max(temperature_anomaly,na.rm = T),size = 6) +
+    ggpubr::stat_cor(label.y = max(temperature_anomaly,na.rm = T)*0.85,size = 6) + 
+    labs(title = plottitle)
+  return(g)
+}
+gg[[1]] <- fun_convert(df0 = global_temps,plottitle = 'Global')
+gg[[2]] <- fun_convert(df0 = nh_temps,plottitle = 'Northern Hemisphere')
+gg[[3]] <- fun_convert(df0 = sh_temps,plottitle = 'South Hemisphere')
+```
+
+### Time series of temperature anomalies at different latitudes
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df0 <- zonann_temps
+df1 <- df0[,-c(1:7)] %>% t
+colnames(df1) <- df0$Year
+df <- reshape2::melt(df1)
+df$Var1 <- factor(df$Var1,levels = df$Var1 %>% unique() %>% rev())
+df$Var2 <- paste0(df$Var2,'-1-1') %>% as.Date()
+gg[[4]] <- 
+  ggplot(df,mapping = aes(x = Var2,y = Var1,fill = value)) + 
+  geom_tile() +
+  scale_fill_gradient2(low = "blue",
+                       high = "red",
+                       mid = 'white',
+                       midpoint = 0,
+                       labels = function(x){paste0(ifelse(x==0,' ±',ifelse(x>0,' +',' -')),x)}) + 
+  labs(title = 'Time series of temperature anomalies at different latitudes') + 
+  theme_minimal() + 
+  theme(legend.title = element_blank(),
+        axis.title = element_blank()) + 
+  scale_x_date(breaks = scales::pretty_breaks(n = 10))
+```
+
+## Plot arrange
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+layout_matrix <- seq(gg) %>% matrix(nrow = 2,byrow = T)
+label_top <- 'Temperature anomalies from the corresponding 1951-1980 means.\nGlobal and hemispheric : monthly means , zonal : annual means\n'
+label_bottom <- 'The extent of the contribution of human activities will be discussed separately,\n but global temperatures, especially in the Northern Hemisphere, do indeed appear to be on an upward trend.'
+#
+for(iii in seq(gg)){
+  gg[[iii]] <- gg[[iii]] + 
+    theme(axis.text = element_text(size = 16),
+          # axis.title = element_text(size = 16),
+          plot.title = element_text(size = 19,hjust = 0.5,face = 'bold.italic'),
+          plot.subtitle = element_text(size = 16),
+          plot.caption = element_text(size = 15),
+          legend.text = element_text(size = 16))
+}
+#
+g <- 
+  gridExtra::arrangeGrob(grobs = gg,
+                         ncol = 2,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label_top,gp = grid::gpar(fontsize = 23)),
+                         bottom = grid::textGrob(label = label_bottom,gp = grid::gpar(fontsize = 19,fontface = 'italic'))) %>%
+  ggpubr::as_ggplot()
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-07-11-Global-surface-temperatures.png"),width = 1200,height = 900)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Three time series charts and one tile plot.
+
+## Type of data : Global, Northern and Southern Hemisphere monthly time series of mean temperature anomalies from the mean temperature composed of surface, atmospheric and sea surface for the period 1951-1980 and annual time series of mean temperature anomalies by latitude.
+
+## Reason for including the chart : The specific progression of global warming can be viewed for the entire globe, the Northern Hemisphere, the Southern Hemisphere, and by latitude.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-11
+```
+
+# `r referencetxt`
+
+- https://rpkgs.datanovia.com/ggpubr/reference/stat_cor.html
