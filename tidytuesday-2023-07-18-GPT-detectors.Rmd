@@ -1,0 +1,149 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# GPT detectors
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-18
+
+# html output : https://saecanet.com/tidytuesday-2023-07-18-GPT-detectors.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+detectors <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-18/detectors.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(detectors)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-18' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+detectors %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+#  『NA indicates that the text was not written by a human.』 for native.
+```
+
+## Check unique items
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+detectors[,c("kind",".pred_class","detector","native","name","model","prompt")] %>% apply(MARGIN = 2,FUN = function(x)matrix(unique(x)))
+```
+
+## Correct prediction
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_correct0 <- (detectors$kind==detectors$.pred_class) %>% detectors[.,])
+```
+
+## Wrong prediction
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_wrong0 <- (detectors$kind!=detectors$.pred_class) %>% detectors[.,])
+```
+
+## Number of correct predictions by detector
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_correct <- df_correct0$detector %>% table() %>% data.frame() %>% {colnames(.) <- c('detector','correct_freq');.})
+```
+
+## Number of wrong predictions by detector
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_wrong <- df_wrong0$detector %>% table() %>% data.frame() %>% {colnames(.) <- c('detector','wrong_freq');.})
+```
+
+## Percentage correctly predicted by detector
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- plyr::join(df_correct,df_wrong)
+df$accuracy_rate <- round(df$correct_freq/(df$correct_freq+df$wrong_freq)*100)
+df$number_of_trials <- df$correct_freq + df$wrong_freq
+(df <- df$accuracy_rate %>% order(decreasing = F) %>% df[.,])
+```
+
+## Check items of kind column
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+detectors$kind %>% unique()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+is.na(detectors$kind) %>% sum()
+```
+
+## Percentage of "AI" in column kind
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+detectors$kind %>% table()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(yintercept <- detectors$kind %>% table() %>% {./nrow(detectors)*100} %>% max() %>% round())
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hide',fig.show='hide'}
+df$detector <- df$detector %>% factor(levels = df$detector)
+g <- 
+  ggplot(data = df,mapping = aes(x = detector,y = accuracy_rate,fill = accuracy_rate)) + 
+  geom_bar(stat = 'identity') + 
+  theme_minimal() + 
+  geom_hline(yintercept = yintercept,col = 'blue',linewidth = 2) + 
+  coord_flip() +
+  scale_fill_gradient(low = 'red',high = 'yellow') +
+  theme(legend.position = 'none',
+        plot.title = element_text(hjust = 0.5,size = 17),
+        plot.subtitle = element_text(hjust = 0.5,face = 'italic',size = 16),
+        axis.text = element_text(size = 14),
+        axis.title = element_blank()) +
+  labs(title = 'Accurately predicted percentages\n',
+       subtitle = 'The blue vertical line is the percentage of correct answers when all are predicted to be "AI"\n without thinking. In other words, if the correct prediction rate of detector does not\n exceed the blue line, it is meaningless to spend money and time to make a prediction.') + 
+  scale_y_continuous(labels = function(x)paste(x,'%'),breaks = scales::pretty_breaks(7))
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-07-18-GPT-detectors.png"),width = 800,height = 500)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : One bar chart.
+
+## Type of data : Percentage of correct answers by detector.
+
+## Reason for including the chart : Compare the percentage of correct predictions of the seven detectors and see if any of the detectors performed better than the percentage of correct predictions made without any thought.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-18
+```
+
+# `r referencetxt`
+
+- https://github.com/simonpcouch/detectors/
