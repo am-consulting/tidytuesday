@@ -1,0 +1,125 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Scurvy
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-25
+
+# html output : https://saecanet.com/tidytuesday-2023-07-25-Scurvy.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+(scurvy <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-07-25/scurvy.csv'))
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-25' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+scurvy %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Check unique items
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+scurvy[,-1] %>% apply(MARGIN = 2,FUN = function(x)matrix(unique(x)))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+paste0(scurvy$treatment,'/',scurvy$dosing_regimen_for_scurvy) %>% unique()
+# All dosing_regimen_for_scurvy  for each treatment             are identical.
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(scurvy[,4:8] <- scurvy[,4:8] %>% apply(MARGIN = 2,FUN = function(x)gsub('_.+$','',x) %>% as.integer()) %>% data.frame(check.names = F))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+scurvy$id_and_treatment <- paste0(scurvy$study_id,':', scurvy$treatment)
+scurvy$id_and_treatment <- scurvy$id_and_treatment %>% factor(levels = unique(scurvy$id_and_treatment))
+scurvy
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+colnames(scurvy) <- colnames(scurvy) %>% gsub('_d6$','',.)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df <- scurvy[,c(9,4:7)])
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(group.colours <- RColorBrewer::brewer.pal(n = 6,name = 'Set2') %>% rep(each = 2))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold',fig.show='hide'}
+# devtools::install_github("ricardo-bion/ggradar",dependencies = TRUE)
+library(ggradar)
+g <- 
+  ggradar(plot.data = df,
+          grid.max = 3,
+          grid.mid = 2,
+          grid.min = 1,
+          values.radar = c('1','2','3'),
+          group.colours = group.colours,
+          centre.y = 0,
+          group.line.width = 1,
+          group.point.size = 6,
+          axis.label.size = 5,
+          axis.label.offset = 0.9,
+          fill = T,
+          fill.alpha = 0.2) + 
+  theme(legend.position = 'none',
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(face = 'italic',hjust = 0.5)) + 
+  facet_wrap(facets = ~ id_and_treatment) + 
+  labs(title = 'Scurvy\n',
+       subtitle = 'The radar chart shows that the two seamen who were given citrus seem to be in better physical\n condition on day 6 than the other 10 who were given non-citrus, but the sample size is too small to draw any conclusions.')
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-07-25-Scurvy.png"),width = 1700,height = 1000)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : 12 radar charts.
+
+## Type of data : A total of 12 seafarers were divided into 6 treatments of 2 people each, and data on physical condition (gums, skin, knees and fatigue) after 6 days were evaluated, with no problems being 0 and 3 being serious.
+
+## Reason for including the chart : The radar chart allows the user to list the changes in physical condition after each treatment and the comparison of multiple treatments.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-07-25
+```
+
+# `r referencetxt`
+
+- https://github.com/ricardo-bion/ggradar/blob/master/R/ggradar.R
+- https://exts.ggplot2.tidyverse.org/ggradar.html
+- https://www.karada-good.net/analyticsr/r-422/
+- https://www.r-bloggers.com/2022/10/ggradar-radar-plots-with-ggplot-in-r/
