@@ -1,0 +1,291 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# US State Names
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-01
+
+# html output : https://saecanet.com/tidytuesday-2023-08-01-US-State-Names.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+states <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-01/states.csv')
+state_name_etymology <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-01/state_name_etymology.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(states)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(state_name_etymology)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-01' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[2]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+states %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+state_name_etymology %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Features
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+states$`Percentage of water area to total area` <- 
+  round(states$water_area_km2/states$total_area_km2*100,2)
+states$`Population density of land area(people per square kilometer)` <- 
+  round(states$population_2020/states$land_area_km2,2)
+states$`Ratio of land area to water area` <- 
+  round(states$land_area_km2/states$water_area_km2,2)
+states$`Population per representative` <- 
+  round(states$population_2020/states$n_representatives)
+states$`year of admission` <- 
+  states$admission %>% as.Date() %>% year()
+states$postal_abbreviation %>% sort()
+# No DC(District of Columbia)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_states <- 
+  states[,c("postal_abbreviation",
+            "Percentage of water area to total area",
+            "Population density of land area(people per square kilometer)",
+            "Ratio of land area to water area",
+            "Population per representative",
+            "year of admission")]
+colnames(df_states)[1] <- 'STUSPS'
+```
+
+## Plot
+
+- Shapefile source
+    - https://catalog.data.gov/dataset/tiger-line-shapefile-2017-nation-u-s-current-state-and-equivalent-national/resource/ea102089-f1df-453f-beb7-b002cfebc2fe
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+shpdir <- 'D:/tidytuesday/tl_2017_us_state'
+setwd(shpdir)
+dir() %>% matrix()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(sf)
+setwd(shpdir)
+(usashp <- read_sf('tl_2017_us_state.shp'))
+```
+
+```{r usstatenames01,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+usashp <- usashp$STATEFP %>% order(decreasing = F) %>% usashp[.,]
+(usashp_simple <- st_simplify(x = usashp,dTolerance = 1000,preserveTopology = TRUE))
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames02,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Remove American Samoa,Guam,Commonwealth of the Northern Mariana Islands,Puerto Rico,United States Virgin Islands.
+(usashp_simple <- usashp_simple[-c(52:56),])
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames03,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Simplify Alaska 
+row_alaska <- which(usashp_simple$NAME=='Alaska')
+usashp_simple$geometry[row_alaska] <- st_crop(x = usashp_simple$geometry[row_alaska],
+                                              y = c(xmin = -180, xmax = -120, ymin = 35, ymax = 90))
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames04,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Shrink and move Alaska
+alaska <- usashp_simple$geometry[row_alaska]
+center_of_alaska <- sf::st_centroid(alaska)
+zoom_rate <- 0.4
+position_shift <- c(45, -40) # Move it 45 degrees east and 40 degrees south.
+usashp_simple$geometry[row_alaska] <- (alaska - center_of_alaska) * zoom_rate + center_of_alaska + position_shift
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames05,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Simplify Hawaii 
+row_hawaii <- which(usashp_simple$NAME=='Hawaii')
+usashp_simple$geometry[row_hawaii] <- st_crop(x = usashp_simple$geometry[row_hawaii],
+                                              y = c(xmin = -161, xmax = -154, ymin = 18, ymax = 23))
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames06,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Move Hawaii
+position_shift <- c(75, 0) # Move it 75 degrees east
+usashp_simple$geometry[row_hawaii] <- usashp_simple$geometry[row_hawaii] + position_shift
+ggplot() + geom_sf(data = usashp_simple) + theme_minimal()
+```
+
+```{r usstatenames07,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# Add segment
+func_add_segment_to_shp_map  <- function(x,xend,y,yend,size = ggplot2::.pt / 15){
+  ggplot2::annotate(geom = "segment",
+                    x = x,
+                    xend = xend,
+                    y = y,
+                    yend = yend,
+                    linewidth = .pt / 15)}
+g <- 
+  ggplot() + 
+  geom_sf(data = usashp_simple) + 
+  func_add_segment_to_shp_map(x = c(-120,-101,-97),
+                              xend = c(-101,-97,-97),
+                              y =    c(27,27,22),
+                              yend = c(27,22,17)) +   
+  func_add_segment_to_shp_map(x = c(-87,-87,-80),
+                              xend = c(-87,-80,-77),
+                              y =    c(17,22,24),
+                              yend = c(22,24,24)) + 
+  theme(axis.title = element_blank()) + 
+  theme_minimal()
+g
+```
+
+### GeoJSON file
+
+- https://saecanet.com/usashp_simple.geojson
+
+```{r usstatenames08,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+usashp_simple.geojson <- st_as_sf(x = usashp_simple)
+setwd('D:/tidytuesday/')
+st_write(usashp_simple.geojson,"usashp_simple.geojson",delete_dsn = T)
+usashp_simple.geojson <- read_sf("usashp_simple.geojson") 
+ggplot() + geom_sf(data = usashp_simple.geojson) +   theme_minimal()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+fun_plot <- function(df_value,color_low,color_high){
+  plottitle <- colnames(df_value)[2]
+  colnames(df_value)[2] <- 'value'
+  df0 <- left_join(usashp_simple[,c("STUSPS","NAME","geometry")],df_value)
+  g <- 
+    ggplot() + 
+    geom_sf(mapping = aes(fill = value),data = df0) + 
+    func_add_segment_to_shp_map(x = c(-120,-101,-97),
+                                xend = c(-101,-97,-97),
+                                y =    c(27,27,22),
+                                yend = c(27,22,17)) +   
+    func_add_segment_to_shp_map(x = c(-87,-87,-80),
+                                xend = c(-87,-80,-77),
+                                y =    c(17,22,24),
+                                yend = c(22,24,24)) + 
+    scale_fill_gradient(low = color_low,high = color_high,na.value = 'white') + 
+    theme_minimal() +
+    theme(axis.title = element_blank(),legend.title = element_blank()) + labs(title = plottitle) 
+  return(g)
+}
+g <- list()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_value <- df_states[,c("STUSPS","Percentage of water area to total area")]
+g[[1]] <- fun_plot(df_value = df_value,color_low = 'aliceblue',color_high = 'blue')
+```
+
+```{r usstatenames09,eval=TRUE,echo=TRUE,results='hold',fig.show='asis'}
+# DC
+g[[1]] + xlim(c(-79,-76)) + ylim(c(38,40))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_value <- df_states[,c("STUSPS","Population density of land area(people per square kilometer)")]
+g[[2]] <- fun_plot(df_value = df_value,color_low = 'yellow',color_high = 'red')
+```
+
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_value <- df_states[,c("STUSPS","Population per representative")]
+g[[3]] <- fun_plot(df_value = df_value,color_low = 'yellow',color_high = 'red')
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_value <- df_states[,c("STUSPS","year of admission")]
+g[[4]] <- fun_plot(df_value = df_value,color_low = 'aliceblue',color_high = 'blue')
+```
+
+## Plot arrange
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+layout_matrix <- seq(g) %>% matrix(nrow = 2,byrow = T)
+label_top <- 'US State Names'
+label_bottom <- ''
+#
+for(iii in seq(g)){
+  g[[iii]] <- g[[iii]] + 
+    theme(axis.text = element_text(size = 16),
+          # axis.title = element_text(size = 16),
+          plot.title = element_text(size = 19,hjust = 0.5,face = 'bold.italic'),
+          plot.subtitle = element_text(size = 16),
+          plot.caption = element_text(size = 15),
+          legend.text = element_text(size = 16))
+}
+#
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 2,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1,1),
+                         top = grid::textGrob(label = label_top,gp = grid::gpar(fontsize = 23)),
+                         bottom = grid::textGrob(label = label_bottom,gp = grid::gpar(fontsize = 19,fontface = 'italic'))) %>%
+  ggpubr::as_ggplot()
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-08-01-US-State-Names.png"),width = 1700,height = 1000)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : Four American choropleth maps.
+
+## Type of data : Percentage of water area to total area, land area population density, population per representative, and year incorporated into the United States for each of the 50 US states.
+
+## Reason for including the chart : A choropleth map allows us to grasp the trend of these feature values by state or by area.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-01
+```
+
+# `r referencetxt`
+
+- https://catalog.data.gov/dataset/tiger-line-shapefile-2017-nation-u-s-current-state-and-equivalent-national/resource/ea102089-f1df-453f-beb7-b002cfebc2fe
+- https://saecanet.com/saecanet-tips-R-script-for-creating-prefectural-boundary-shapefiles-GeoJSON-and-prefectural-boundary-colopleth-map.html
+- https://keita43a.hatenablog.com/entry/2020/04/27/023918
+- https://www.r-bloggers.com/2021/03/simplifying-geospatial-features-in-r-with-sf-and-rmapshaper/
+- https://rstudio-pubs-static.s3.amazonaws.com/775867_4cfbe983012a46cab16e53205452d3c8.html
