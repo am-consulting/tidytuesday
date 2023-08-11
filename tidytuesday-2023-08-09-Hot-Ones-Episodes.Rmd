@@ -1,0 +1,146 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Hot Ones Episodes
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-08
+
+# html output : https://saecanet.com/tidytuesday-2023-08-09-Hot-Ones-Episodes.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+episodes <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-08/episodes.csv')
+sauces <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-08/sauces.csv')
+seasons <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-08/seasons.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(episodes)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(sauces)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(seasons)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-08' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[2]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[3]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+episodes %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+is.na(episodes$guest) %>% episodes[.,'title']
+# No guest on the Holiday Special.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+sauces %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+seasons %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Features
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_total_scoville_by_season <- aggregate(x = sauces$scoville,by = list(sauces$season),sum) %>% {colnames(.) <- c('season','total_scoville_by_season');.})
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df <- plyr::join(episodes,df_total_scoville_by_season))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_loser <- df[df$finished==F,]
+(df_loser <- df_loser$total_scoville %>% order() %>% df_loser[.,])
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(name_of_loser_tried_more_than_onece <- df_loser[df_loser$guest_appearance_number>1,"guest"])
+# Names of losers who have tried more than once.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+{df$guest==name_of_loser_tried_more_than_onece} %>% df[.,c("season","episode_season","original_release","guest","finished","total_scoville_by_season")] %>% na.omit()
+# To Eric André's credit, he did succeed on his first attempt.If it is the same person.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_loser$guest <- paste0(df_loser$guest,'(',formatC(df_loser$season,width = 2,flag = '0'),'-',formatC(df_loser$episode_season,width = 2,flag = '0'),',',format(df_loser$original_release,'%Y/%m/%d'),')')
+df_loser$guest <- factor(df_loser$guest,levels = df_loser$guest)
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- 
+  ggplot(data = df_loser,mapping = aes(x = guest,y = total_scoville_by_season,fill = total_scoville_by_season)) + 
+  geom_bar(stat = 'identity') + coord_flip() + 
+  theme_minimal() + 
+  scale_fill_gradient(low = 'yellow',high = 'red', labels = scales::label_comma()) + 
+  theme(plot.title = element_text(size = 19,hjust = 0.5,face = 'bold'),
+        plot.subtitle = element_text(size = 17,hjust = 0.5,face = 'italic'),
+        axis.text = element_text(size = 15),axis.title = element_blank(),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 14)) + 
+  scale_y_continuous(labels = function(x)formatC(x = x,big.mark = ',',format = 'fg')) + 
+  labs(title = 'Who are the losers in Hot Ones Episodes?\n',subtitle = "This is a list of names of losers who failed the challenge, and the numbers are the sum of\n the Scoville scale of the 10 different sauces per season;\n Tony Yayo and DJ Khaled failed to complete even the lowest total Scoville scale of the 21 seasons.\n And to Eric André's credit, he did succeed on his first attempt.If it is the same person.") 
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-08-09-Hot-Ones-Episodes.png"),width = 950,height = 700)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : One bar graph.
+
+## Type of data : Names of losers who failed the challenge and the total Scoville scale of the 10 different sauces for that season they challenged on the Hot Ones Episodes.
+
+## Reason for including the chart : We can learn about celebrities who have succumbed to painful sauces and see if they routinely insist on, for example, "never give up."
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-08
+```
+
+# `r referencetxt`
+
+- https://en.wikipedia.org/wiki/Scoville_scale
