@@ -1,0 +1,155 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Spam E-mail
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-15
+
+# html output : https://saecanet.com/tidytuesday-2023-08-15-Spam-E-mail.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+spam <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-15/spam.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(spam)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-15' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+spam %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+spam$yesno %>% unique()
+# There is only yes or no.
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+spam$yesno <- ifelse(spam$yesno=='y','spam','Not spam')
+spam$yesno <- spam$yesno %>% factor(levels = c('spam','Not spam'))
+head(spam$yesno)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_ratio <- aggregate(x = spam$yesno,by = list(spam$yesno),FUN = function(x)round(length(x)/nrow(spam)*100)) %>% {colnames(.) <- c('yesno','ratio(%)');.})
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_ratio$yesno
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- list()
+g[[1]] <- 
+  ggplot(data = df_ratio,mapping = aes(x='',y = `ratio(%)`,fill = yesno)) + 
+  geom_bar(stat = 'identity',position = 'stack') +
+  coord_polar(theta = "y") + 
+  theme_minimal() + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 20)) +
+  geom_text(aes(label = `ratio(%)`), size = 7, color = "black",position = position_stack(vjust = 0.5)) + 
+  theme(axis.text = element_text(size = 14),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        legend.text = element_text(size = 14)) + 
+  labs(title = paste0('N = ',nrow(spam))) + 
+  scale_fill_manual(values = c('Not spam' = '#00BFC4','spam' = 'red'))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+for(ccc in 2:6){
+  tmp <- aggregate(x = spam[,ccc],by = list(spam$yesno),mean)
+  colnames(tmp) <- c('yesno','mean')
+  tmp$feature <- colnames(spam)[ccc]
+  if(ccc==2){df_average <- tmp}else{df_average <- rbind(df_average,tmp)}
+}
+df_average
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_average$yesno
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g[[2]] <- 
+  ggplot(data = df_average,mapping = aes(x = yesno,y = mean,fill = yesno)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(facets = .~feature,ncol = 2) + 
+  theme_light() + 
+  theme(legend.position = 'none',
+        axis.text = element_text(size = 14),
+        axis.title = element_blank(),
+        strip.text = element_text(size = 14,colour = 'black'),plot.title = element_text(hjust = 0.5,size = 14)) +
+  scale_fill_manual(values = c('Not spam' = '#00BFC4','spam' = 'red')) + 
+  labs(title = 'Averaege occurrences as percent of total number of characters/words') 
+```
+
+## Plot arrange
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 1,byrow = T)
+label_top <- 'Spam E-mail\n'
+label_bottom <- 'The word "bang" seems to occur more frequently in spam emails than the other four words or characters.\nThis is consistent with my personal unpleasant experience.'
+#
+g <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label_top,gp = grid::gpar(fontsize = 23)),
+                         bottom = grid::textGrob(label = label_bottom,gp = grid::gpar(fontsize = 19,fontface = 'italic'))) %>%
+  ggpubr::as_ggplot()
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-08-15-Spam-E-mail.png"),width = 950,height = 700)
+g %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : One pie chart and five bar charts.
+
+## Type of data : A total of 4,601 email datasets classified by whether they are spam or not, plus the occurrence of five words or characters.
+
+## Reason for including the chart : The pie chart shows the breakdown of a total of 4601 e-mails as spam or not spam, and the bar chart shows the average percentage of occurrence of the five offending words in spam or non-spam e-mails, allowing comparison of the occurrence of those words in spam e-mails.
+
+## Link to data or source : https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-15
+```
+
+# `r referencetxt`
+
+- https://rcatalogue.com/plot/basic-plot/piechart/
+- https://qiita.com/swathci/items/13cbe1ac34aba2bfc0ef
