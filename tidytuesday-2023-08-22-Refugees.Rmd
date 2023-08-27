@@ -1,0 +1,217 @@
+# Code
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Refugees
+
+# https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-22
+
+# html output : https://saecanet.com/tidytuesday-2023-08-22-Refugees.html
+
+# Loading packages
+
+# library(tidylog)
+library(tidyverse)
+rstudioapi::getSourceEditorContext()$path %>% dirname() %>% setwd()
+
+# Loading source data
+population <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-22/population.csv')
+```
+
+## Glimpse
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+glimpse(population)
+```
+
+## Check description
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_description <- 
+  'https://github.com/rfordatascience/tidytuesday/tree/master/data/2023/2023-08-22' %>% read_html()  %>% html_table())
+```
+
+## Display descriptions
+
+```{r eval=TRUE,echo=TRUE,results='asis'}
+df_description[[1]] %>% DT::datatable(options = list(lengthMenu = list(c(10, -1),c("10","All"))))
+```
+
+## Check NA
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+population %>% apply(MARGIN = 2,FUN = function(x)sum(is.na(x))) %>% data.frame()
+```
+
+## Features
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+population$year %>% unique
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+(df_refugees_by_year <- aggregate(x = population$refugees,by = list(population$year),FUN = sum) %>% {colnames(.) <- c('year','refugees');.})
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+library(rvest)
+(df_world_population <- 'https://www.worldometers.info/world-population/population-by-country/' %>% read_html() %>% html_table() %>% {.[[1]]} %>% data.frame(check.names = F))
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df_world_population$`Population (2023)` <- df_world_population$`Population (2023)` %>% gsub(',','',.) %>% as.numeric()
+population_Portugal <- {df_world_population$`Country (or dependency)`=='Portugal'} %>% df_world_population$`Population (2023)`[.]
+population_Zambia <- {df_world_population$`Country (or dependency)`=='Zambia'} %>% df_world_population$`Population (2023)`[.]
+population_Venezuela <- {df_world_population$`Country (or dependency)`=='Venezuela'} %>% df_world_population$`Population (2023)`[.]
+```
+
+## Plot
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+g <- list()
+df_refugees_by_year$year <- df_refugees_by_year$year %>% factor(levels = sort(df_refugees_by_year$year))
+df_refugees_by_year$`YoY(%)` <- round((tail(df_refugees_by_year$refugees,-1)/head(df_refugees_by_year$refugees,-1)-1)*100,1) %>% {ifelse(.>0,yes = paste0('+',.),no = .)} %>% {c('',paste0(.,'%'))}
+g[[1]] <- 
+  ggplot(data = df_refugees_by_year,mapping = aes(x = year,y = refugees)) + 
+  geom_bar(stat = 'identity',fill = 'orange') + 
+  theme_minimal() + 
+  scale_y_continuous(labels = function(x)formatC(x,format = 'fg',big.mark = ',')) + 
+  theme(axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 16),
+        plot.subtitle = element_text(hjust = 0.5,
+                                     size = 15,
+                                     face = 'italic'),
+        axis.text = element_text(size = 14)) + 
+  geom_hline(yintercept = population_Portugal,linetype = 'dotted',linewidth = 1) + 
+  geom_hline(yintercept = population_Zambia,linetype = 'dotted',linewidth = 1) + 
+  geom_hline(yintercept = population_Venezuela,linetype = 'dotted',linewidth = 1) + 
+  geom_text(mapping = aes(x = 1,y = population_Portugal),
+            label='Population of Portugal',
+            vjust = -1,
+            size = 5,
+            hjust = 0) + 
+  geom_text(mapping = aes(x = 1,y = population_Zambia),
+            label='Population of Zambia',
+            vjust = -1,
+            size = 5,
+            hjust = 0) + 
+  geom_text(mapping = aes(x = 1,y = population_Venezuela),
+            label='Population of Venezuela',
+            vjust = -1,
+            size = 5,
+            hjust = 0) + 
+  labs(title = 'Number of refugees worldwide per year',
+       subtitle = 'The populations of Portugal, Zambia and Venezuela are estimates for 2023.') +
+  geom_text(mapping = aes(label = `YoY(%)`),size = 6)
+```
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+df <- aggregate(x = population$refugees,by = list(population$year,population$coo_name),FUN = sum)
+colnames(df) <- c('year','country','refugees')
+df$year <- df$year %>% factor(levels = sort(df$year %>% unique))
+df_refugees_by_year_and_country <- lapply(df$year %>% unique,FUN = function(x){x==df$year} %>% df[.,] %>% {.[order(.$refugees,decreasing = T),]})
+for(iii in seq(df_refugees_by_year_and_country)){
+  buf0 <- df_refugees_by_year_and_country[[iii]]
+  buf0$ratio <- round(buf0$refugees/sum(buf0$refugees)*100,1)
+  buf1 <- buf0 %>% head(5)
+  if(iii==1){df0 <- buf1}else{df0 <- rbind(df0,buf1)}
+}
+df0$country <- df0$country %>% factor(levels = df$country %>% unique() %>% rev())
+df0$refugees <- df0$refugees*10^-6
+g[[2]] <- 
+  ggplot(data = df0,mapping = aes(x = country,y = refugees,fill = country)) + 
+  geom_bar(stat = 'identity') + 
+  coord_flip() + 
+  theme_minimal() +
+  facet_wrap(.~year,ncol = 3) + 
+  theme(legend.position = 'none',
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 16),
+        plot.subtitle = element_text(hjust = 1,size = 14),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 14)) + 
+  scale_y_continuous(labels = function(x)formatC(x,big.mark = ',',format = 'fg'),
+                     breaks = scales::pretty_breaks(6)) + 
+  labs(title = 'Top 5 countries in number of refugees by year',
+       subtitle = 'Unit:one million people')
+```
+
+## Changes by country
+
+### Afghanistan
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Afghanistan
+df_Afghanistan <- df$country %>% grep('Afghanistan',.) %>% df[.,]
+df_Afghanistan$YoY <- df_Afghanistan$refugees %>% diff %>% {c('',formatC(.,big.mark = ',',format = 'fg'))}
+df_Afghanistan$refugees <- df_Afghanistan$refugees %>% formatC(format = 'fg',big.mark = ',')
+knitr::kable(df_Afghanistan,format = 'html',align = c('r','c','r','r')) %>% kableExtra::kable_styling()
+```
+
+### Syrian Arab Rep.
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Syrian Arab Rep.
+df_Syrian <- df$country %>% grep('Syrian',.) %>% df[.,]
+df_Syrian$YoY <- df_Syrian$refugees %>% diff %>% {c('',formatC(.,big.mark = ',',format = 'fg'))}
+df_Syrian$refugees <- df_Syrian$refugees %>% formatC(format = 'fg',big.mark = ',')
+knitr::kable(df_Syrian,format = 'html',align = c('r','c','r','r')) %>% kableExtra::kable_styling()
+```
+
+### Ukraine
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+# Ukraine
+df_Ukraine <- df$country %>% grep('Ukraine',.) %>% df[.,]
+df_Ukraine$YoY <- df_Ukraine$refugees %>% diff %>% {c('',formatC(.,big.mark = ',',format = 'fg'))}
+df_Ukraine$refugees <- df_Ukraine$refugees %>% formatC(format = 'fg',big.mark = ',')
+knitr::kable(df_Ukraine,format = 'html',align = c('r','c','r','r')) %>% kableExtra::kable_styling()
+```
+
+## Plot arrange
+
+```{r eval=TRUE,echo=TRUE,results='hold'}
+layout_matrix <- seq(g) %>% matrix(nrow = 1,byrow = T)
+label_top <- 'Refugees\n'
+label_bottom <- 'When broken down by country, the high increase in 2022 (up 37.9% year-on-year)\n was contributed most by the increase in refugees from Ukraine, followed by refugees from Afghanistan.'
+#
+gg <- 
+  gridExtra::arrangeGrob(grobs = g,
+                         ncol = 2,
+                         nrow = 1,
+                         layout_matrix = layout_matrix,
+                         widths = c(1,1),
+                         heights = c(1),
+                         top = grid::textGrob(label = label_top,
+                                              gp = grid::gpar(fontsize = 23)),
+                         bottom = grid::textGrob(label = label_bottom,
+                                                 gp = grid::gpar(fontsize = 19,
+                                                                 fontface = 'italic'))) %>%
+  ggpubr::as_ggplot()
+```
+
+## Output
+
+```{r eval=TRUE,echo=TRUE,results='hide'}
+# Chart output
+setwd('D:/tidytuesday/');getwd()
+png(paste0("tidytuesday-2023-08-22-Refugees.png"),width = 1300,height = 950)
+gg %>% print()
+dev.off()
+
+# ALT
+
+## Chart type : One bar graph showing the global refugee population over time and 13 bar graphs showing the five countries with the highest number of refugees by year from 2010 to 2022.
+
+## Type of data : Number of refugees by year and by country.
+
+## Reason for including the chart : By grasping the chronological changes in the number of refugees by country and by year and the current situation, it is possible to consider what should be done to reduce the number of refugees.
+
+## Link to data or source : 
+```
+
+# `r referencetxt`
+
+- https://www.worldometers.info/world-population/population-by-country/
